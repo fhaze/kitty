@@ -20,6 +20,7 @@ import (
 	"os/user"
 	"path"
 	"path/filepath"
+	"runtime"
 	"regexp"
 	"slices"
 	"strconv"
@@ -118,7 +119,7 @@ func connection_sharing_args(kitty_pid int) ([]string, error) {
 	// ~104 chars. And on idiotic Apple the path length to the runtime dir
 	// (technically the cache dir since Apple has no runtime dir and thinks it's
 	// a great idea to delete files in /tmp) is ~48 chars.
-	if len(rd) > 35 {
+	if len(rd) > 35 && runtime.GOOS != "windows" {
 		idiotic_design := fmt.Sprintf("/tmp/kssh-rdir-%d", os.Geteuid())
 		if err := utils.AtomicCreateSymlink(rd, idiotic_design); err != nil {
 			return nil, err
@@ -662,6 +663,12 @@ func run_ssh(ssh_args, server_args, found_extra_args []string, ssh_config_channe
 	}
 	master_is_alive, master_checked := false, false
 	var control_master_args []string
+	if host_opts.Share_connections && !GetSSHVersion().SupportsControlMaster() {
+		if host_opts.Forward_remote_control && os.Getenv("KITTY_LISTEN_ON") != "" {
+			return 1, fmt.Errorf("Cannot use forward_remote_control=yes as the ssh executable (%s) does not support ControlMaster", SSHExe())
+		}
+		host_opts.Share_connections = false
+	}
 	if host_opts.Share_connections {
 		kpid, err := strconv.Atoi(os.Getenv("KITTY_PID"))
 		if err != nil {

@@ -251,10 +251,30 @@ func ReadSSHConfig(ctx context.Context, ssh_args []string, hostname string) <-ch
 	return ch
 }
 
-type SSHVersion struct{ Major, Minor int }
+type SSHVersion struct {
+	Major, Minor int
+	// Win32-OpenSSH (the ssh.exe shipped with Windows) reports itself as OpenSSH_for_Windows_X.Y
+	IsWin32OpenSSH bool
+}
 
 func (self SSHVersion) SupportsAskpassRequire() bool {
 	return self.Major > 8 || (self.Major == 8 && self.Minor >= 4)
+}
+
+// Win32-OpenSSH has no connection multiplexing: ControlMaster/ControlPath fail
+// with "getsockname failed: Not a socket"
+func (self SSHVersion) SupportsControlMaster() bool {
+	return !self.IsWin32OpenSSH
+}
+
+func parse_ssh_version(b []byte) SSHVersion {
+	ans := SSHVersion{IsWin32OpenSSH: bytes.Contains(b, []byte("OpenSSH_for_Windows"))}
+	m := regexp.MustCompile(`OpenSSH_(?:for_Windows_)?(\d+)\.(\d+)`).FindSubmatch(b)
+	if len(m) == 3 {
+		ans.Major, _ = strconv.Atoi(utils.UnsafeBytesToString(m[1]))
+		ans.Minor, _ = strconv.Atoi(utils.UnsafeBytesToString(m[2]))
+	}
+	return ans
 }
 
 var GetSSHVersion = sync.OnceValue(func() SSHVersion {
@@ -262,13 +282,7 @@ var GetSSHVersion = sync.OnceValue(func() SSHVersion {
 	if err != nil {
 		return SSHVersion{}
 	}
-	m := regexp.MustCompile(`OpenSSH_(\d+).(\d+)`).FindSubmatch(b)
-	if len(m) == 3 {
-		maj, _ := strconv.Atoi(utils.UnsafeBytesToString(m[1]))
-		min, _ := strconv.Atoi(utils.UnsafeBytesToString(m[2]))
-		return SSHVersion{Major: maj, Minor: min}
-	}
-	return SSHVersion{}
+	return parse_ssh_version(b)
 })
 
 type KittyOpts struct {
