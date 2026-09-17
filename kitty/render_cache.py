@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from contextlib import closing, suppress
 from functools import partial
 
-from .constants import cache_dir, kitten_exe
+from .constants import cache_dir, helper_process_popen_kwargs, kitten_exe
 from .utils import lock_file, unlock_file
 
 
@@ -71,7 +71,9 @@ class ImageRenderCache:
 
         try:
             with open(src_path, 'rb') as src, open(output_path, 'wb', opener=partial(os.open, mode=stat.S_IREAD | stat.S_IWRITE)) as output:
-                cp = subprocess.run([kitten_exe(), '__convert_image__', 'RGBA'], stdin=src, stdout=output, stderr=subprocess.PIPE)
+                cp = subprocess.run(
+                    [kitten_exe(), '__convert_image__', 'RGBA'], stdin=src, stdout=output, stderr=subprocess.PIPE, **helper_process_popen_kwargs()
+                )
                 if cp.returncode != 0:
                     raise ValueError(f'Failed to convert {src_path} to RGBA data with error: {cp.stderr.decode("utf-8", "replace")}')
                 if output.seek(0, os.SEEK_END) < 8:

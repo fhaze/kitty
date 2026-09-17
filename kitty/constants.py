@@ -3,9 +3,9 @@
 
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, NamedTuple, Optional, TypedDict
 
 from .types import run_once
 
@@ -301,6 +301,23 @@ def clear_handled_signals(*a: Any) -> None:
         signal.pthread_sigmask(signal.SIG_UNBLOCK, handled_signals)
     for s in handled_signals:
         signal.signal(s, signal.SIG_DFL)
+
+
+class HelperProcessPopenKwargs(TypedDict, total=False):
+    preexec_fn: Callable[[], None]
+    creationflags: int
+
+
+def helper_process_popen_kwargs(uses_terminal: bool = False) -> HelperProcessPopenKwargs:
+    # Keyword arguments for subprocess.Popen() when running helper programs
+    # from kitty. On Windows kitty is a GUI program with no console, so a
+    # console program it spawns would otherwise get a console window of its
+    # own, unless it is meant to use the terminal kitty was started from.
+    if sys.platform == 'win32':
+        import subprocess
+
+        return {} if uses_terminal else {'creationflags': subprocess.CREATE_NO_WINDOW}
+    return {'preexec_fn': clear_handled_signals}
 
 
 @run_once

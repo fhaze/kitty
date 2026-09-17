@@ -9,7 +9,7 @@ from typing import NamedTuple
 from urllib.request import urlopen
 
 from .config import atomic_save
-from .constants import Version, cache_dir, clear_handled_signals, kitty_exe, version, website_url
+from .constants import Version, cache_dir, helper_process_popen_kwargs, kitty_exe, version, website_url
 from .fast_data_types import add_timer, get_boss, monitor_pid
 from .utils import log_error, open_url
 
@@ -106,7 +106,7 @@ def run_worker() -> None:
 def update_check() -> bool:
     try:
         p = subprocess.Popen(
-            [kitty_exe(), '+runpy', 'from kitty.update_check import run_worker; run_worker()'], stdout=subprocess.PIPE, preexec_fn=clear_handled_signals
+            [kitty_exe(), '+runpy', 'from kitty.update_check import run_worker; run_worker()'], stdout=subprocess.PIPE, **helper_process_popen_kwargs()
         )
     except Exception as e:
         log_error(f'Failed to run kitty for update check, with error: {e}')

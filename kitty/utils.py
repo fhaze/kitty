@@ -23,8 +23,8 @@ from typing import (
 
 from .constants import (
     cache_dir,
-    clear_handled_signals,
     config_dir,
+    helper_process_popen_kwargs,
     is_macos,
     is_wayland,
     is_windows,
@@ -272,7 +272,7 @@ def open_cmd(
         env = os.environ.copy()
         env.update(extra_env)
     return subprocess.Popen(
-        tuple(cmd), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=cwd or None, preexec_fn=clear_handled_signals, env=env
+        tuple(cmd), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=cwd or None, **helper_process_popen_kwargs(), env=env
     )
 
 
@@ -854,7 +854,7 @@ def read_resolved_shell_environment(shell: tuple[str, ...]) -> MappingProxyType[
     os.set_blocking(master, False)
     try:
         p = subprocess.Popen(
-            cmdline + ['-c', cmd], stdout=slave, stdin=slave, stderr=slave, start_new_session=True, close_fds=True, preexec_fn=clear_handled_signals
+            cmdline + ['-c', cmd], stdout=slave, stdin=slave, stderr=slave, start_new_session=True, close_fds=True, **helper_process_popen_kwargs()
         )
     except FileNotFoundError:
         log_error(f'Could not find shell {cmdline[0]} to read environment')
@@ -1014,7 +1014,7 @@ def hold_till_enter() -> None:
 
     from .constants import kitten_exe
 
-    subprocess.Popen([kitten_exe(), '__hold_till_enter__']).wait()
+    subprocess.Popen([kitten_exe(), '__hold_till_enter__'], **helper_process_popen_kwargs(uses_terminal=True)).wait()
 
 
 def cleanup_ssh_control_masters() -> None:
@@ -1030,7 +1030,7 @@ def cleanup_ssh_control_masters() -> None:
             ['ssh', '-o', f'ControlPath={x}', '-O', 'exit', 'kitty-unused-host-name'],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            preexec_fn=clear_handled_signals,
+            **helper_process_popen_kwargs(),
         )
         for x in files
     )
