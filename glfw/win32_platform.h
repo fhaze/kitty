@@ -121,6 +121,8 @@
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
+// Undocumented attribute id used by Windows 10 builds 17763 through 18985
+#define DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 19
 #ifndef DWMWA_SYSTEMBACKDROP_TYPE
 #define DWMWA_SYSTEMBACKDROP_TYPE 38
 #endif
