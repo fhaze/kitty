@@ -10,6 +10,10 @@ requires = [
     "packaging == 23.1",
 ]
 
+[tool.ty.environment]
+# Unix-only code paths are guarded at runtime, check them regardless of the host OS
+python-platform = "linux"
+
 [tool.ty.src]
 include = [
   "kitty",

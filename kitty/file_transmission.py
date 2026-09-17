@@ -9,6 +9,7 @@ import json
 import os
 import re
 import stat
+import sys
 import tempfile
 from base64 import b85decode
 from collections import defaultdict, deque
@@ -122,7 +123,10 @@ def iter_file_metadata(file_specs: Iterable[tuple[str, str]]) -> Iterator[Union[
                 path = abspath(path, use_home=True)
         try:
             sr = os.stat(path, follow_symlinks=False)
-            read_ok = os.access(path, os.R_OK, follow_symlinks=False)
+            if os.access in os.supports_follow_symlinks:
+                read_ok = os.access(path, os.R_OK, follow_symlinks=False)
+            else:
+                read_ok = os.access(path, os.R_OK)
         except OSError as err:
             errname = errno.errorcode.get(err.errno, 'EFAIL') if err.errno is not None else 'EFAIL'
             yield TransmissionError(file_id=spec_id, code=errname, msg='Failed to read spec')
@@ -409,6 +413,7 @@ class PatchFile:
             self._dest_file.close()
             p.finish_delta_data()
             if self.src_file is not None:
+                self.src_file.close()
                 os.replace(self.dest_file.name, self.path)
         if self.src_file is not None and not self.src_file.closed:
             self.src_file.close()
@@ -436,8 +441,13 @@ class PatchFile:
         if self.src_file is None:
             # O_NOFOLLOW so that a symlink planted at the destination cannot be
             # used to read some other file and leak its signature to the sender
-            flags = os.O_RDONLY | getattr(os, 'O_CLOEXEC', 0) | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NOFOLLOW', 0)
-            self.src_file = open(os.open(self.path, flags), mode='rb', closefd=True)
+            if sys.platform == 'win32':
+                from kitty.fast_data_types import open_nofollow
+
+                fd = open_nofollow(self.path, os.O_RDONLY | os.O_BINARY)
+            else:
+                fd = os.open(self.path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+            self.src_file = open(fd, mode='rb', closefd=True)
             return self.patcher.signature_header(buf)
         n = self.src_file.readinto(self.block_buffer)
         if n > 0:
@@ -676,7 +686,10 @@ class SourceFile:
         self.target = b''
         self.open_file: io.BufferedReader | None = None
         if stat.S_ISLNK(self.stat.st_mode):
-            self.target = os.readlink(self.path).encode('utf-8')
+            target = os.readlink(self.path)
+            if sys.platform == 'win32':
+                target = target.removeprefix('\\\\?\\')
+            self.target = target.encode('utf-8')
         else:
             self.open_file = open(self.path, 'rb')
             if ftc.compression is Compression.zlib:

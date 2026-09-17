@@ -1,5 +1,7 @@
 // License: GPLv3 Copyright: 2024, Kovid Goyal, <kovid at kovidgoyal.net>
 
+//go:build !windows
+
 package utils
 
 import (

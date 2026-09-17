@@ -1,5 +1,7 @@
 // License: GPLv3 Copyright: 2023, Kovid Goyal, <kovid at kovidgoyal.net>
 
+//go:build !windows
+
 package ssh
 
 import (
@@ -8,6 +10,7 @@ import (
 	"fmt"
 	"github.com/kovidgoyal/go-shm"
 	"github.com/kovidgoyal/kitty"
+	"github.com/kovidgoyal/kitty/tools/utils"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -17,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/sys/unix"
 )
 
 var _ = fmt.Print
@@ -146,7 +148,7 @@ func TestSSHTarfile(t *testing.T) {
 	}
 	for _, x := range []string{"kitty", "kitten"} {
 		p := filepath.Join(tdir, "home", cd.host_opts.Remote_dir, "kitty", "bin", x)
-		if err = unix.Access(p, unix.X_OK); err != nil {
+		if err = utils.Access(p, utils.X_OK); err != nil {
 			t.Fatalf("Cannot execute %s with error: %s", x, err)
 		}
 	}

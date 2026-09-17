@@ -36,15 +36,13 @@
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-bool _glfwPlatformCreateTls(_GLFWtls* tls)
-{
+bool
+_glfwPlatformCreateTls(_GLFWtls *tls) {
     assert(tls->win32.allocated == false);
 
     tls->win32.index = TlsAlloc();
-    if (tls->win32.index == TLS_OUT_OF_INDEXES)
-    {
-        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                             "Win32: Failed to allocate TLS index");
+    if (tls->win32.index == TLS_OUT_OF_INDEXES) {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR, "Win32: Failed to allocate TLS index");
         return false;
     }
 
@@ -52,48 +50,45 @@ bool _glfwPlatformCreateTls(_GLFWtls* tls)
     return true;
 }
 
-void _glfwPlatformDestroyTls(_GLFWtls* tls)
-{
-    if (tls->win32.allocated)
-        TlsFree(tls->win32.index);
+void
+_glfwPlatformDestroyTls(_GLFWtls *tls) {
+    if (tls->win32.allocated) TlsFree(tls->win32.index);
     memset(tls, 0, sizeof(_GLFWtls));
 }
 
-void* _glfwPlatformGetTls(_GLFWtls* tls)
-{
+void *
+_glfwPlatformGetTls(_GLFWtls *tls) {
     assert(tls->win32.allocated == true);
     return TlsGetValue(tls->win32.index);
 }
 
-void _glfwPlatformSetTls(_GLFWtls* tls, void* value)
-{
+void
+_glfwPlatformSetTls(_GLFWtls *tls, void *value) {
     assert(tls->win32.allocated == true);
     TlsSetValue(tls->win32.index, value);
 }
 
-bool _glfwPlatformCreateMutex(_GLFWmutex* mutex)
-{
+bool
+_glfwPlatformCreateMutex(_GLFWmutex *mutex) {
     assert(mutex->win32.allocated == false);
     InitializeCriticalSection(&mutex->win32.section);
     return mutex->win32.allocated = true;
 }
 
-void _glfwPlatformDestroyMutex(_GLFWmutex* mutex)
-{
-    if (mutex->win32.allocated)
-        DeleteCriticalSection(&mutex->win32.section);
+void
+_glfwPlatformDestroyMutex(_GLFWmutex *mutex) {
+    if (mutex->win32.allocated) DeleteCriticalSection(&mutex->win32.section);
     memset(mutex, 0, sizeof(_GLFWmutex));
 }
 
-void _glfwPlatformLockMutex(_GLFWmutex* mutex)
-{
+void
+_glfwPlatformLockMutex(_GLFWmutex *mutex) {
     assert(mutex->win32.allocated == true);
     EnterCriticalSection(&mutex->win32.section);
 }
 
-void _glfwPlatformUnlockMutex(_GLFWmutex* mutex)
-{
+void
+_glfwPlatformUnlockMutex(_GLFWmutex *mutex) {
     assert(mutex->win32.allocated == true);
     LeaveCriticalSection(&mutex->win32.section);
 }
-

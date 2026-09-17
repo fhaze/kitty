@@ -110,6 +110,7 @@ func TestThemeCollections(t *testing.T) {
 	}
 	var jm JSONMetadata
 	err = json.Unmarshal([]byte(r.Comment), &jm)
+	r.Close() // Windows forbids renaming over open files
 	if err != nil {
 		t.Fatal(err)
 	}

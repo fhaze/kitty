@@ -302,7 +302,7 @@ def end_startup_notification_x11(ctx: 'StartupCtx') -> None:
 
 
 def init_startup_notification(window_handle: int | None, startup_id: str | None = None) -> Optional['StartupCtx']:
-    if is_macos or is_wayland():
+    if is_macos or is_windows or is_wayland():
         return None
     if window_handle is None:
         log_error('Could not perform startup notification as window handle not present')
@@ -397,6 +397,8 @@ def parse_address_spec(spec: str) -> tuple[AddressFamily, tuple[str, int] | str,
     socket_path = None
     address: str | tuple[str, int] = ''
     if protocol == 'unix':
+        if is_windows:
+            raise ValueError(f'UNIX sockets are not supported on Windows, use tcp: instead of {spec}')
         family = socket.AF_UNIX
         address = rest
         if address.startswith('@') and len(address) > 1:
@@ -802,6 +804,9 @@ def which(name: str, only_system: bool = False) -> str | None:
     # In case PATH is messed up try a default set of paths
     if is_macos:
         system_paths = system_paths_on_macos()
+    elif is_windows:
+        sysroot = os.environ.get('SystemRoot', r'C:\Windows')
+        system_paths = (os.path.join(sysroot, 'System32'), sysroot, os.path.join(sysroot, 'System32', 'WindowsPowerShell', 'v1.0'))
     else:
         system_paths = ('/usr/local/bin', '/opt/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin')
     tried_paths |= set(paths)
@@ -829,6 +834,11 @@ def which(name: str, only_system: bool = False) -> str | None:
 def read_resolved_shell_environment(shell: tuple[str, ...]) -> MappingProxyType[str, str]:
     import subprocess
 
+    ans: MappingProxyType[str, str] = MappingProxyType({})
+    if is_windows:
+        # Windows shells have no login/interactive rc files that set up the
+        # environment, the environment of this process is what child processes get
+        return ans
     cmdline = list(shell)
     if '-l' not in cmdline and '--login' not in cmdline:
         cmdline += ['-l']
@@ -837,7 +847,6 @@ def read_resolved_shell_environment(shell: tuple[str, ...]) -> MappingProxyType[
     q = os.path.basename(cmdline[0]).lower()
     has_builtin = q in ('bash', 'zsh')
     cmd = 'builtin command env -0' if has_builtin else 'command env -0'
-    ans: MappingProxyType[str, str] = MappingProxyType({})
 
     from .child import openpty
 
@@ -1236,7 +1245,7 @@ def timed_debug_print(*a: Any, sep: str = ' ', end: str = '\n') -> None:
 def lock_file(f: IO[bytes] | IO[str]) -> None:
     if not f.writable():
         raise ValueError('Cannot lock files not opened in writable mode')
-    if is_windows:
+    if sys.platform == 'win32':
         import msvcrt
 
         f.seek(0)
@@ -1250,7 +1259,7 @@ def lock_file(f: IO[bytes] | IO[str]) -> None:
 def unlock_file(f: IO[bytes] | IO[str]) -> None:
     if not f.writable():
         raise ValueError('Cannot unlock files not opened in writable mode')
-    if is_windows:
+    if sys.platform == 'win32':
         import msvcrt
 
         f.seek(0)
@@ -1263,7 +1272,12 @@ def unlock_file(f: IO[bytes] | IO[str]) -> None:
 
 @contextmanager
 def lock_with_file(path: str) -> Iterator[None]:
-    os.close(os.open(path, os.O_CREAT | os.O_WRONLY | os.O_EXCL | os.O_CLOEXEC))
+    flags = os.O_CREAT | os.O_WRONLY | os.O_EXCL
+    if sys.platform == 'win32':
+        flags |= os.O_NOINHERIT
+    else:
+        flags |= os.O_CLOEXEC
+    os.close(os.open(path, flags))
     try:
         yield
     finally:
@@ -1273,7 +1287,12 @@ def lock_with_file(path: str) -> Iterator[None]:
 def rmtree_best_effort(relpath: str, dir_fd: int) -> None:
     import shutil
 
-    shutil.rmtree(relpath, ignore_errors=True, dir_fd=dir_fd)
+    if sys.platform == 'win32':
+        from .fast_data_types import path_from_fd
+
+        shutil.rmtree(os.path.join(path_from_fd(dir_fd), relpath), ignore_errors=True)
+    else:
+        shutil.rmtree(relpath, ignore_errors=True, dir_fd=dir_fd)
 
 
 def mktempdir_in_cache(prefix: str, delete_on_kitty_exit: bool) -> tuple[str, int]:
@@ -1281,7 +1300,12 @@ def mktempdir_in_cache(prefix: str, delete_on_kitty_exit: bool) -> tuple[str, in
 
     ans = os.path.abspath(tempfile.mkdtemp(prefix, dir=cache_dir()))
     try:
-        retval = ans, os.open(ans, os.O_DIRECTORY | os.O_RDONLY)
+        if is_windows:
+            from .fast_data_types import open_directory
+
+            retval = ans, open_directory(ans)
+        else:
+            retval = ans, os.open(ans, os.O_DIRECTORY | os.O_RDONLY)
     except OSError as e:
         import errno
         import shutil

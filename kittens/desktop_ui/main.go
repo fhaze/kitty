@@ -1,3 +1,5 @@
+//go:build !windows
+
 package desktop_ui
 
 import (

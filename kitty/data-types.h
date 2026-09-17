@@ -74,7 +74,12 @@
 #define C0_EXCEPT_NL_SPACE_TAB       \
     0x0 ... 0x8 : case 0xb ... 0x1f: \
     case 0x7f
-void log_error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+#ifdef __MINGW32__
+#define KITTY_PRINTF_FORMAT gnu_printf
+#else
+#define KITTY_PRINTF_FORMAT printf
+#endif
+void log_error(const char *fmt, ...) __attribute__((format(KITTY_PRINTF_FORMAT, 1, 2)));
 #define fatal(...)              \
     {                           \
         log_error(__VA_ARGS__); \

@@ -388,6 +388,7 @@ def environ_of_process(pid: int) -> str:
     pass
 
 def memory_of_process(pid: int) -> int: ...
+def memory_of_process_tree(pid: int) -> int: ...
 def ppid_of_process(pid: int) -> int: ...
 def cmdline_of_process(pid: int) -> List[str]:
     pass
@@ -1355,6 +1356,24 @@ class KeyEvent:
         pass
 
 def set_iutf8_fd(fd: int, on: bool) -> bool:
+    pass
+
+def openpty(rows: int = 24, cols: int = 80) -> tuple[int, int]:
+    pass
+
+def set_blocking(fd: int, blocking: bool) -> None:
+    pass
+
+def open_directory(path: str) -> int:
+    pass
+
+def open_nofollow(path: str, flags: int) -> int:
+    pass
+
+def path_from_fd(fd: int) -> str:
+    pass
+
+def fd_owned_by_current_user(fd: int) -> bool:
     pass
 
 def spawn(

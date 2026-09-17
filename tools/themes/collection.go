@@ -350,6 +350,7 @@ func set_comment_in_zip_file(path string, comment string) error {
 		}
 	}
 	dest.Close()
+	src.Close()
 	return utils.AtomicUpdateFile(path, bytes.NewReader(buf.Bytes()), 0o644)
 }
 
@@ -362,8 +363,10 @@ func fetch_cached(name, url, cache_path string, max_cache_age time.Duration) (st
 
 	var jm JSONMetadata
 	if err == nil {
-		defer zf.Close()
-		if err = json.Unmarshal(utils.UnsafeStringToBytes(zf.Comment), &jm); err == nil {
+		// close before the cache file is replaced below, Windows forbids renaming over open files
+		comment := zf.Comment
+		zf.Close()
+		if err = json.Unmarshal(utils.UnsafeStringToBytes(comment), &jm); err == nil {
 			if max_cache_age < 0 {
 				return cache_path, nil
 			}

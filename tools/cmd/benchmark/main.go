@@ -4,7 +4,6 @@ package benchmark
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -16,8 +15,6 @@ import (
 	"github.com/kovidgoyal/kitty/tools/tui/graphics"
 	"github.com/kovidgoyal/kitty/tools/tui/loop"
 	"github.com/kovidgoyal/kitty/tools/utils"
-
-	"golang.org/x/sys/unix"
 )
 
 var _ = fmt.Print
@@ -99,7 +96,7 @@ func benchmark_data(description string, data string, opts Options) (duration tim
 	for !bytes.Contains(read_data, q) {
 		n, err := term.Read(buf)
 		if err != nil {
-			if (errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINTR)) && n == 0 {
+			if utils.IsTemporarySyscallError(err) && n == 0 {
 				continue
 			}
 			break

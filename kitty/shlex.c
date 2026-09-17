@@ -63,7 +63,7 @@ next_word_with_position(Shlex *self, PyObject *args UNUSED) {
     switch (len) {
         case -1: PyErr_SetString(PyExc_ValueError, self->state.err); return NULL;
         case -2:
-            if (self->yielded) return Py_BuildValue("is#", -1, self->state.buf, 0);
+            if (self->yielded) return Py_BuildValue("is#", -1, self->state.buf, (Py_ssize_t)0);
             len = 0;
             /* fallthrough */
         default: self->yielded = true; return Py_BuildValue("ks#", pos, self->state.buf, (Py_ssize_t)len);

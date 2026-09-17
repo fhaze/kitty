@@ -1613,7 +1613,9 @@ def test_slang_build() -> None:
 [shader("vertex")]
 float4 main(uint vertex_id : SV_VertexID) : SV_Position { return float4(vertex_id, 1, 0, 1); }
 """
-    cp = subprocess.run(list(slangc()) + '-lang slang -entry main -stage vertex -target glsl -o /dev/stdout -- -'.split(), input=src, capture_output=True)
+    with tempfile.TemporaryDirectory() as tdir:
+        cmd = list(slangc()) + '-lang slang -entry main -stage vertex -target glsl -o'.split() + [os.path.join(tdir, 'out.glsl'), '--', '-']
+        cp = subprocess.run(cmd, input=src, capture_output=True)
     if cp.returncode != 0:
         raise AssertionError(f'Test compile of shader to GLSL failed with returncode: {cp.returncode} and stderr: {cp.stderr.decode()}')
 

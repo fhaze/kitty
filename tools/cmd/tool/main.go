@@ -11,7 +11,6 @@ import (
 	"github.com/kovidgoyal/kitty/kittens/choose_fonts"
 	"github.com/kovidgoyal/kitty/kittens/clipboard"
 	"github.com/kovidgoyal/kitty/kittens/command_palette"
-	"github.com/kovidgoyal/kitty/kittens/desktop_ui"
 	"github.com/kovidgoyal/kitty/kittens/diff"
 	"github.com/kovidgoyal/kitty/kittens/dnd"
 	"github.com/kovidgoyal/kitty/kittens/hints"
@@ -80,7 +79,7 @@ func KittyToolEntryPoints(root *cli.Command) {
 	// show_key
 	show_key.EntryPoint(root)
 	// desktop_ui
-	desktop_ui.EntryPoint(root)
+	desktop_ui_entry_point(root)
 	// mouse_demo
 	root.AddSubCommand(&cli.Command{
 		Name:             "mouse-demo",

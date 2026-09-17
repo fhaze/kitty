@@ -16,7 +16,6 @@ import (
 	"github.com/kovidgoyal/kitty/tools/utils"
 
 	"golang.org/x/exp/slices"
-	"golang.org/x/sys/unix"
 )
 
 var _ = fmt.Print
@@ -44,7 +43,7 @@ func inject_self_onto_path() {
 			done := false
 			changed := false
 			is_executable_file := func(q string) bool {
-				if unix.Access(q, unix.X_OK) != nil {
+				if utils.Access(q, utils.X_OK) != nil {
 					return false
 				}
 				if s, err := os.Stat(q); err == nil && !s.IsDir() {

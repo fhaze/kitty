@@ -116,7 +116,7 @@
 #define OCR_HAND 32649
 #endif
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
-#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((HANDLE)-4)
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((HANDLE) - 4)
 #endif
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
@@ -204,7 +204,19 @@ typedef VkBool32(APIENTRY *PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR)(V
 
 #define _glfw_dlopen(name) LoadLibraryA(name)
 #define _glfw_dlclose(handle) FreeLibrary((HMODULE)handle)
-#define _glfw_dlsym(handle, name) GetProcAddress((HMODULE)handle, name)
+// ISO C forbids casting between function and object pointers, go via a union
+static inline void *
+_glfw_win32_proc_to_ptr(FARPROC f) {
+    union {
+        FARPROC f;
+        void *p;
+    } u = {.f = f};
+    return u.p;
+}
+static inline void *
+_glfw_dlsym(void *handle, const char *name) {
+    return _glfw_win32_proc_to_ptr(GetProcAddress((HMODULE)handle, name));
+}
 
 #define _GLFW_PLATFORM_WINDOW_STATE _GLFWwindowWin32 win32
 #define _GLFW_PLATFORM_LIBRARY_WINDOW_STATE _GLFWlibraryWin32 win32

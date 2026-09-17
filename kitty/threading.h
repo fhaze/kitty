@@ -17,6 +17,8 @@ extern int pthread_setname_np(const char *name);
 #elif defined(FREEBSD_SET_NAME)
 // Function has a different name on FreeBSD
 void pthread_set_name_np(pthread_t tid, const char *name);
+#elif defined(_WIN32)
+#include "win32-compat.h"
 #else
 // Need _GNU_SOURCE for pthread_setname_np on linux and that causes other issues on systems with old glibc
 extern int pthread_setname_np(pthread_t, const char *name);
@@ -30,6 +32,9 @@ set_thread_name(const char *name) {
 #elif defined(FREEBSD_SET_NAME)
     pthread_set_name_np(pthread_self(), name);
     ret = 0;
+#elif defined(_WIN32)
+    // winpthreads only knows about threads it created itself
+    ret = kitty_win32_set_current_thread_name(name) ? 0 : EINVAL;
 #else
     ret = pthread_setname_np(pthread_self(), name);
 #endif

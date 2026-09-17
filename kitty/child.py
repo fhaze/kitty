@@ -323,6 +323,14 @@ def set_LANG_in_default_env(val: str) -> None:
     default_env().setdefault('LANG', val)
 
 
+def set_blocking(fd: int, blocking: bool) -> None:
+    if is_windows:
+        # os.set_blocking() only works on pipes on Windows, the pty master is a socket
+        fast_data_types.set_blocking(fd, blocking)
+    else:
+        os.set_blocking(fd, blocking)
+
+
 def openpty() -> tuple[int, int]:
     if is_windows:
         return fast_data_types.openpty()
@@ -549,7 +557,7 @@ class Child:
         os.close(ready_read_fd)
         self.terminal_ready_fd = ready_write_fd
         if self.child_fd is not None:
-            os.set_blocking(self.child_fd, False)
+            set_blocking(self.child_fd, False)
         if not is_macos and not is_windows:
             ppid = getpid()
             try:

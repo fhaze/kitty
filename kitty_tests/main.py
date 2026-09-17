@@ -9,6 +9,7 @@ import select
 import shutil
 import subprocess
 import sys
+import sysconfig
 import time
 import unittest
 from collections.abc import Callable, Generator, Iterator, Sequence
@@ -55,6 +56,9 @@ def find_all_tests(package: str = '', excludes: Sequence[str] = ('main', 'gr')) 
     suits = []
     if not package:
         package = __name__.rpartition('.')[0] if '.' in __name__ else 'kitty_tests'
+    if sys.platform == 'win32':
+        # these drive POSIX shells through a pty
+        excludes = tuple(excludes) + ('shell_integration', 'ssh')
     for x in sorted(contents(package)):
         name, ext = os.path.splitext(x)
         if ext in ('.py', '.pyc') and name not in excludes:
@@ -99,7 +103,13 @@ def type_check() -> NoReturn:
     from kittens.tui.operations_stub import generate_stub  # type: ignore
 
     generate_stub()
-    os.execlp('ty', 'ty', 'check')
+    cmd = ['ty', 'check']
+    if sys.platform == 'win32':
+        # ty cannot discover the site-packages of the MSYS2 python layout
+        # and exec() is not a true process replacement on Windows
+        cmd += ['--extra-search-path', sysconfig.get_path('purelib')]
+        raise SystemExit(subprocess.run(cmd).returncode)
+    os.execvp(cmd[0], cmd)
 
 
 def run_cli(suite: unittest.TestSuite, verbosity: int = 4) -> bool:
@@ -124,11 +134,14 @@ def find_testable_go_packages() -> tuple[set[str], dict[str, list[str]]]:
     for dirpath, dirnames, filenames in os.walk(base):
         if 'b' in dirnames and os.path.basename(dirpath) == 'bypy':
             dirnames.remove('b')
+        if dirpath != base and 'go.mod' in filenames:  # nested module, not part of the main module
+            dirnames.clear()
+            continue
         for f in filenames:
             if f.endswith('_test.go'):
                 q = os.path.relpath(dirpath, base)
                 ans.add(q)
-                with open(os.path.join(dirpath, f)) as s:
+                with open(os.path.join(dirpath, f), encoding='utf-8') as s:
                     raw = s.read()
                 for m in pat.finditer(raw):
                     test_functions.setdefault(m.group(1), []).append(q)
@@ -510,7 +523,12 @@ def collect_worker_results(
         watch = list(active_py)
         if go_active and go_proc is not None:
             watch.append(go_proc.stdout_fd)
-        readable, _, _ = select.select(watch, [], [])
+        if sys.platform == 'win32':
+            # select() only works on sockets, but there is never more than
+            # one pipe to watch since Python workers are not used
+            readable = watch
+        else:
+            readable, _, _ = select.select(watch, [], [])
 
         for fd in readable:
             if go_proc is not None and fd == go_proc.stdout_fd:
@@ -773,7 +791,8 @@ def run_tests(report_env: bool = False) -> None:
     # Start Python workers; each worker calls env_for_python_tests independently
     # for full HOME/XDG isolation, as does the serial path below.
     # On macOS fork()+threading is unsafe, so use subprocess workers there.
-    use_parallel = len(tests_list) > PARALLEL_THRESHOLD
+    # Worker processes communicate over inherited pipe fds, which Windows does not support
+    use_parallel = len(tests_list) > PARALLEL_THRESHOLD and sys.platform != 'win32'
     worker_pids: list[int] = []
     worker_procs: list[subprocess.Popen[bytes]] = []
     read_fds: list[int] = []

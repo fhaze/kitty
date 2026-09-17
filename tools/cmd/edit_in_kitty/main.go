@@ -6,13 +6,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/emmansun/base64"
-	"golang.org/x/sys/unix"
 
 	"github.com/kovidgoyal/kitty/tools/cli"
 	"github.com/kovidgoyal/kitty/tools/tui"
@@ -182,13 +180,12 @@ func edit_in_kitty(path string, opts *Options) (exit_code int, err error) {
 		return 1, fmt.Errorf("Failed to open %s for reading with error: %w", path, err)
 	}
 	defer read_file.Close()
-	var s unix.Stat_t
-	err = unix.Fstat(int(read_file.Fd()), &s)
+	s, err := read_file.Stat()
 	if err != nil {
 		return 1, fmt.Errorf("Failed to stat %s with error: %w", path, err)
 	}
-	if s.Size > int64(opts.MaxFileSize)*1024*1024 {
-		return 1, fmt.Errorf("File size %s is too large for performant editing", humanize.Bytes(uint64(s.Size)))
+	if s.Size() > int64(opts.MaxFileSize)*1024*1024 {
+		return 1, fmt.Errorf("File size %s is too large for performant editing", humanize.Bytes(uint64(s.Size())))
 	}
 
 	file_data, err := io.ReadAll(read_file)
@@ -209,7 +206,7 @@ func edit_in_kitty(path string, opts *Options) (exit_code int, err error) {
 	}
 	add_encoded := func(key, val string) { add(key, encode(val)) }
 
-	if unix.Access(path, unix.R_OK|unix.W_OK) != nil {
+	if utils.Access(path, utils.R_OK|utils.W_OK) != nil {
 		return 1, fmt.Errorf("%s is not readable and writeable", path)
 	}
 	cwd, err := os.Getwd()
@@ -220,11 +217,12 @@ func edit_in_kitty(path string, opts *Options) (exit_code int, err error) {
 	for _, arg := range os.Args[2:] {
 		add_encoded("a", arg)
 	}
-	add("file_inode", fmt.Sprintf("%d:%d:%d", s.Dev, s.Ino, s.Mtim.Nano()))
+	dev, ino := utils.FileIdentity(s)
+	add("file_inode", fmt.Sprintf("%d:%d:%d", dev, ino, s.ModTime().UnixNano()))
 	add_encoded("file_data", utils.UnsafeBytesToString(file_data))
 	fmt.Println("Waiting for editing to be completed, press Esc to abort...")
 	write_data := func(data_type string, rdata []byte) (err error) {
-		err = utils.AtomicWriteFile(path, bytes.NewReader(rdata), fs.FileMode(s.Mode).Perm())
+		err = utils.AtomicWriteFile(path, bytes.NewReader(rdata), s.Mode().Perm())
 		if err != nil {
 			err = fmt.Errorf("Failed to write data to %s with error: %w", path, err)
 		}

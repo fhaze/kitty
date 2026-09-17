@@ -228,7 +228,7 @@ def launcher(self):
             if not line:
                 continue
             try:
-                key, val = line.split(':')
+                key, val = line.split(':', 1)
             except ValueError:
                 raise AssertionError(f'Unexpected output from launcher: {line!r}\n{cp.stdout.decode()}')
             if '\x1e' in val:
@@ -516,15 +516,20 @@ def conf_parsing(self):
         print('globinclude glob/*', file=f)
         print('envinclude ENVINCLUDE', file=f)
         print('geninclude g.py', file=f)
-        print('geninclude g', file=f)
+        print('geninclude g.cmd' if os.name == 'nt' else 'geninclude g', file=f)
     with open(os.path.join(self.tdir, 'g.py'), 'w') as g:
         print('print("background_opacity .77")', file=g)
         print('print("background_blur 77")', file=g)
-    with open(os.path.join(self.tdir, 'g'), 'w') as g:
-        print('#!/bin/sh', file=g)
-        print('echo background_image_linear y', file=g)
-        print('echo background_image_layout clamped', file=g)
-        os.chmod(g.fileno(), 0o700)
+    if os.name == 'nt':
+        with open(os.path.join(self.tdir, 'g.cmd'), 'w') as g:
+            print('@echo background_image_linear y', file=g)
+            print('@echo background_image_layout clamped', file=g)
+    else:
+        with open(os.path.join(self.tdir, 'g'), 'w') as g:
+            print('#!/bin/sh', file=g)
+            print('echo background_image_linear y', file=g)
+            print('echo background_image_layout clamped', file=g)
+            os.chmod(g.fileno(), 0o700)
     os.environ['ENVINCLUDE'] = 'cursor yellow'
     opts = p(f'include {f.name}', num_err=0)
     os.environ.pop('ENVINCLUDE')

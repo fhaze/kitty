@@ -1347,8 +1347,15 @@ dispatch_csi(PS *self) {
                 break;
             }
             switch (params[0]) {
+#ifdef _WIN32
+                case 8: break; // ConPTY echoes the new size as CSI 8 ; rows ; cols t after every resize
                 case 4:
-                case 8: REPORT_ERROR("Escape codes to resize text area are not supported"); break;
+#else
+                case 4:
+                case 8:
+#endif
+                    REPORT_ERROR("Escape codes to resize text area are not supported");
+                    break;
                 case 14:
                 case 16:
                 case 18: CALL_CSI_HANDLER2(screen_report_size, 0, 0); break;

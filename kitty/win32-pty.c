@@ -59,7 +59,7 @@ pty_unref(Win32Pty *pty) {
     free(pty);
 }
 
-static Win32Pty*
+static Win32Pty *
 pty_ref(Win32Pty *pty) {
     InterlockedIncrement(&pty->refcount);
     return pty;
@@ -90,7 +90,7 @@ unregister_pty(Win32Pty *pty) {
     if (found) pty_unref(pty);
 }
 
-static Win32Pty*
+static Win32Pty *
 pty_for_master_fd(int master_fd) {
     Win32Pty *ans = NULL;
     EnterCriticalSection(&ptys_lock);
@@ -104,7 +104,7 @@ pty_for_master_fd(int master_fd) {
     return ans;
 }
 
-static Win32Pty*
+static Win32Pty *
 pty_for_pid(pid_t pid) {
     Win32Pty *ans = NULL;
     EnterCriticalSection(&ptys_lock);
@@ -185,7 +185,7 @@ process_exited(void *arg, BOOLEAN timed_out UNUSED) {
 }
 
 static bool
-start_thread(unsigned (__stdcall *func)(void *), Win32Pty *pty) {
+start_thread(unsigned(__stdcall *func)(void *), Win32Pty *pty) {
     pty_ref(pty);
     HANDLE t = (HANDLE)_beginthreadex(NULL, 0, func, pty, 0, NULL);
     if (!t) {
@@ -223,18 +223,23 @@ win32_pty_open(int *master_fd, int *slave_fd, unsigned short rows, unsigned shor
         goto fail;
     }
     // conhost has its own copies of these
-    CloseHandle(in_read); in_read = INVALID_HANDLE_VALUE;
-    CloseHandle(out_write); out_write = INVALID_HANDLE_VALUE;
-    pty->pty_in_write = in_write; in_write = INVALID_HANDLE_VALUE;
-    pty->pty_out_read = out_read; out_read = INVALID_HANDLE_VALUE;
+    CloseHandle(in_read);
+    in_read = INVALID_HANDLE_VALUE;
+    CloseHandle(out_write);
+    out_write = INVALID_HANDLE_VALUE;
+    pty->pty_in_write = in_write;
+    in_write = INVALID_HANDLE_VALUE;
+    pty->pty_out_read = out_read;
+    out_read = INVALID_HANDLE_VALUE;
 
-    if (kitty_win32_socketpair((uintptr_t*)s) != 0) {
+    if (kitty_win32_socketpair((uintptr_t *)s) != 0) {
         log_error("Failed to create loopback socketpair for ConPTY bridge with WSA error: %d", WSAGetLastError());
         goto fail;
     }
     SetHandleInformation((HANDLE)s[0], HANDLE_FLAG_INHERIT, 0);
     SetHandleInformation((HANDLE)s[1], HANDLE_FLAG_INHERIT, 0);
-    pty->bridge_sock = s[1]; s[1] = INVALID_SOCKET;
+    pty->bridge_sock = s[1];
+    s[1] = INVALID_SOCKET;
     *master_fd = _open_osfhandle((intptr_t)s[0], _O_NOINHERIT);
     if (*master_fd < 0) {
         errno = EMFILE;
@@ -276,28 +281,33 @@ win32_pty_open(int *master_fd, int *slave_fd, unsigned short rows, unsigned shor
         unregister_pty(pty);
         goto fail;
     }
-    pty_unref(pty);  // the registry and the threads hold references
+    pty_unref(pty); // the registry and the threads hold references
     return true;
-fail:
-    {
-        int saved_errno = errno;
-        if (pty->hpc) close_pseudo_console(pty);
-        if (in_read != INVALID_HANDLE_VALUE) CloseHandle(in_read);
-        if (in_write != INVALID_HANDLE_VALUE) CloseHandle(in_write);
-        if (out_read != INVALID_HANDLE_VALUE) CloseHandle(out_read);
-        if (out_write != INVALID_HANDLE_VALUE) CloseHandle(out_write);
-        if (s[0] != INVALID_SOCKET) closesocket(s[0]);
-        if (s[1] != INVALID_SOCKET) closesocket(s[1]);
-        if (*master_fd >= 0) { kitty_win32_close(*master_fd); *master_fd = -1; }
-        if (*slave_fd >= 0) { _close(*slave_fd); *slave_fd = -1; }
-        pty_unref(pty);
-        errno = saved_errno;
+fail: {
+    int saved_errno = errno;
+    if (pty->hpc) close_pseudo_console(pty);
+    if (in_read != INVALID_HANDLE_VALUE) CloseHandle(in_read);
+    if (in_write != INVALID_HANDLE_VALUE) CloseHandle(in_write);
+    if (out_read != INVALID_HANDLE_VALUE) CloseHandle(out_read);
+    if (out_write != INVALID_HANDLE_VALUE) CloseHandle(out_write);
+    if (s[0] != INVALID_SOCKET) closesocket(s[0]);
+    if (s[1] != INVALID_SOCKET) closesocket(s[1]);
+    if (*master_fd >= 0) {
+        kitty_win32_close(*master_fd);
+        *master_fd = -1;
     }
+    if (*slave_fd >= 0) {
+        _close(*slave_fd);
+        *slave_fd = -1;
+    }
+    pty_unref(pty);
+    errno = saved_errno;
+}
     return false;
 }
 
 // spawn {{{
-static wchar_t*
+static wchar_t *
 utf8_to_wide(const char *s) {
     int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
     if (n <= 0) return NULL;
@@ -312,10 +322,11 @@ utf8_to_wide(const char *s) {
 
 static void
 to_backslashes(wchar_t *s) {
-    for (; *s; s++) if (*s == L'/') *s = L'\\';
+    for (; *s; s++)
+        if (*s == L'/') *s = L'\\';
 }
 
-static wchar_t*
+static wchar_t *
 build_command_line(char *const argv[]) {
     size_t cap = 4096, pos = 0;
     char *buf = malloc(cap);
@@ -336,9 +347,9 @@ build_command_line(char *const argv[]) {
     return ans;
 }
 
-static wchar_t*
+static wchar_t *
 build_environment_block(char *const env[]) {
-    size_t total = 1;  // trailing NUL
+    size_t total = 1; // trailing NUL
     size_t count = 0;
     for (; env[count]; count++) total += strlen(env[count]) + 1;
     if (!count) total++;
@@ -441,7 +452,17 @@ win32_pty_spawn(int master_fd, const char *exe, const char *cwd, char *const arg
     // make the console subsystem hand it the ConPTY handles instead.
     STARTUPINFOEXW si = {.StartupInfo.cb = sizeof(si), .StartupInfo.dwFlags = STARTF_USESTDHANDLES, .lpAttributeList = attrs};
     PROCESS_INFORMATION pi = {0};
-    if (!CreateProcessW(wexe, cmdline, NULL, NULL, FALSE, EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED, envblock, wcwd, &si.StartupInfo, &pi)) {
+    if (!CreateProcessW(
+            wexe,
+            cmdline,
+            NULL,
+            NULL,
+            FALSE,
+            EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
+            envblock,
+            wcwd,
+            &si.StartupInfo,
+            &pi)) {
         set_errno_from_last_error();
         goto end;
     }
@@ -483,7 +504,10 @@ end:
         DeleteProcThreadAttributeList(attrs);
         free(attrs);
     }
-    free(wexe); free(wcwd); free(cmdline); free(envblock);
+    free(wexe);
+    free(wcwd);
+    free(cmdline);
+    free(envblock);
     pty_unref(pty);
     return ans;
 }
@@ -521,11 +545,8 @@ win32_pty_signal_pid(pid_t pid, int sig) {
         }
         case SIGHUP:
         case SIGTERM:
-        case SIGKILL:
-            ans = TerminateProcess(pty->process, 128 + sig) || GetLastError() == ERROR_ACCESS_DENIED;
-            break;
-        default:
-            break;
+        case SIGKILL: ans = TerminateProcess(pty->process, 128 + sig) || GetLastError() == ERROR_ACCESS_DENIED; break;
+        default: break;
     }
     pty_unref(pty);
     return ans;

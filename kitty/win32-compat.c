@@ -15,6 +15,9 @@
 #include <winsock2.h>
 #undef pollfd
 #include <windows.h>
+#include <winioctl.h>
+#include <aclapi.h>
+#include <wtsapi32.h>
 #include <bcrypt.h>
 #include <direct.h>
 #include <stdio.h>
@@ -31,26 +34,14 @@ set_errno_from_last_error(void) {
     switch (GetLastError()) {
         case ERROR_FILE_NOT_FOUND:
         case ERROR_PATH_NOT_FOUND:
-        case ERROR_MOD_NOT_FOUND:
-            errno = ENOENT;
-            break;
-        case ERROR_ACCESS_DENIED:
-            errno = EACCES;
-            break;
+        case ERROR_MOD_NOT_FOUND: errno = ENOENT; break;
+        case ERROR_ACCESS_DENIED: errno = EACCES; break;
         case ERROR_NOT_ENOUGH_MEMORY:
-        case ERROR_OUTOFMEMORY:
-            errno = ENOMEM;
-            break;
-        case ERROR_INVALID_HANDLE:
-            errno = EBADF;
-            break;
+        case ERROR_OUTOFMEMORY: errno = ENOMEM; break;
+        case ERROR_INVALID_HANDLE: errno = EBADF; break;
         case ERROR_ALREADY_EXISTS:
-        case ERROR_FILE_EXISTS:
-            errno = EEXIST;
-            break;
-        default:
-            errno = EINVAL;
-            break;
+        case ERROR_FILE_EXISTS: errno = EEXIST; break;
+        default: errno = EINVAL; break;
     }
 }
 
@@ -247,18 +238,53 @@ shm_path(const char *name, char *buf, size_t bufsz) {
     return true;
 }
 
+// Opened with FILE_SHARE_DELETE so that a mapped object can be unlinked by its
+// creator while other processes still have it open, as with POSIX shm
 int
-shm_open(const char *name, int oflag, mode_t mode) {
+shm_open(const char *name, int oflag, mode_t mode UNUSED) {
     char path[MAX_PATH];
     if (!shm_path(name, path, sizeof(path))) return -1;
-    return _open(path, oflag | _O_BINARY, mode);
+    DWORD access = GENERIC_READ, disposition = OPEN_EXISTING;
+    if (oflag & (O_WRONLY | O_RDWR)) access |= GENERIC_WRITE;
+    if (oflag & O_CREAT) disposition = (oflag & O_EXCL) ? CREATE_NEW : (oflag & O_TRUNC) ? CREATE_ALWAYS : OPEN_ALWAYS;
+    else if (oflag & O_TRUNC) disposition = TRUNCATE_EXISTING;
+    HANDLE h = CreateFileA(path, access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, disposition, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        set_errno_from_last_error();
+        return -1;
+    }
+    int fd = _open_osfhandle((intptr_t)h, _O_BINARY | _O_NOINHERIT | ((oflag & (O_WRONLY | O_RDWR)) ? _O_RDWR : _O_RDONLY));
+    if (fd < 0) {
+        CloseHandle(h);
+        errno = EMFILE;
+    }
+    return fd;
+}
+
+// Remove the name immediately even if the file is still open elsewhere
+int
+kitty_win32_unlink_posix(const char *path) {
+    HANDLE h = CreateFileA(path, DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        set_errno_from_last_error();
+        return -1;
+    }
+    FILE_DISPOSITION_INFO_EX dex = {.Flags = FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_POSIX_SEMANTICS};
+    bool ok = SetFileInformationByHandle(h, FileDispositionInfoEx, &dex, sizeof(dex));
+    if (!ok) { // filesystem without POSIX delete support
+        FILE_DISPOSITION_INFO d = {.DeleteFile = TRUE};
+        ok = SetFileInformationByHandle(h, FileDispositionInfo, &d, sizeof(d));
+    }
+    if (!ok) set_errno_from_last_error();
+    CloseHandle(h);
+    return ok ? 0 : -1;
 }
 
 int
 shm_unlink(const char *name) {
     char path[MAX_PATH];
     if (!shm_path(name, path, sizeof(path))) return -1;
-    return _unlink(path);
+    return kitty_win32_unlink_posix(path);
 }
 // }}}
 
@@ -337,6 +363,12 @@ freelocale(locale_t locobj) {
 // }}}
 
 // fcntl and friends {{{
+static bool
+is_socket(HANDLE h) {
+    int type = 0, len = sizeof(type);
+    return getsockopt((SOCKET)h, SOL_SOCKET, SO_TYPE, (char *)&type, &len) != SOCKET_ERROR;
+}
+
 static int
 set_nonblocking(int fd, bool nonblock) {
     HANDLE h = (HANDLE)_get_osfhandle(fd);
@@ -344,7 +376,8 @@ set_nonblocking(int fd, bool nonblock) {
         errno = EBADF;
         return -1;
     }
-    if (GetFileType(h) == FILE_TYPE_PIPE) {
+    // GetFileType() reports sockets as FILE_TYPE_PIPE, so check for them first
+    if (!is_socket(h) && GetFileType(h) == FILE_TYPE_PIPE) {
         DWORD mode = nonblock ? PIPE_NOWAIT : PIPE_WAIT;
         if (!SetNamedPipeHandleState(h, &mode, NULL, NULL)) {
             set_errno_from_last_error();
@@ -385,20 +418,21 @@ fcntl(int fd, int cmd, ...) {
                 return -1;
             }
             return 0;
-        case F_GETFL:
-            return 0;
-        case F_SETFL:
-            return set_nonblocking(fd, (arg & O_NONBLOCK) != 0);
-        default:
-            errno = EINVAL;
-            return -1;
+        case F_GETFL: return 0;
+        case F_SETFL: return set_nonblocking(fd, (arg & O_NONBLOCK) != 0);
+        default: errno = EINVAL; return -1;
     }
 }
 
-static bool
-is_socket(HANDLE h) {
-    int type = 0, len = sizeof(type);
-    return getsockopt((SOCKET)h, SOL_SOCKET, SO_TYPE, (char *)&type, &len) != SOCKET_ERROR;
+int
+kitty_win32_fd_from_socket_handle(intptr_t sock) {
+    if (!is_socket((HANDLE)sock)) {
+        errno = ENOTSOCK;
+        return -1;
+    }
+    int fd = _open_osfhandle(sock, _O_NOINHERIT);
+    if (fd < 0) errno = EMFILE;
+    return fd;
 }
 
 int
@@ -431,7 +465,7 @@ fail:
 int
 pipe2(int fds[2], int flags) {
     SOCKET s[2];
-    if (kitty_win32_socketpair((uintptr_t*)s) != 0) return -1;
+    if (kitty_win32_socketpair((uintptr_t *)s) != 0) return -1;
     // pipes are unidirectional
     shutdown(s[0], SD_SEND);
     shutdown(s[1], SD_RECEIVE);
@@ -542,23 +576,56 @@ openat(int dirfd, const char *path, int flags, ...) {
     char buf[PATH_MAX * 4];
     const char *p = resolve_at(dirfd, path, buf, sizeof(buf));
     if (!p) return -1;
-    if (flags & O_DIRECTORY) {
-        // CRT open() cannot open directories, use a backup semantics handle
+    const bool want_dir = flags & O_DIRECTORY, nofollow = flags & O_NOFOLLOW;
+    const bool readonly = (flags & (O_WRONLY | O_RDWR | O_CREAT | O_TRUNC | O_APPEND)) == 0;
+    if (want_dir || (nofollow && readonly)) {
+        // CRT open() can neither open directories nor refuse to follow symlinks
         wchar_t wpath[32768];
         if (!MultiByteToWideChar(CP_UTF8, 0, p, -1, wpath, (int)(sizeof(wpath) / sizeof(wpath[0])))) {
             errno = ENAMETOOLONG;
             return -1;
         }
-        HANDLE h = CreateFileW(wpath, FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+        DWORD cflags = want_dir ? FILE_FLAG_BACKUP_SEMANTICS : FILE_ATTRIBUTE_NORMAL;
+        if (nofollow) cflags |= FILE_FLAG_OPEN_REPARSE_POINT;
+        HANDLE h = CreateFileW(
+            wpath, want_dir ? FILE_LIST_DIRECTORY : GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, cflags, NULL);
         if (h == INVALID_HANDLE_VALUE) {
             set_errno_from_last_error();
             return -1;
         }
-        int fd = _open_osfhandle((intptr_t)h, _O_NOINHERIT);
-        if (fd < 0) CloseHandle(h);
+        BY_HANDLE_FILE_INFORMATION info;
+        if (!GetFileInformationByHandle(h, &info)) {
+            set_errno_from_last_error();
+            CloseHandle(h);
+            return -1;
+        }
+        if (want_dir && !(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            CloseHandle(h);
+            errno = ENOTDIR;
+            return -1;
+        }
+        if (nofollow && (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            CloseHandle(h);
+            errno = ELOOP;
+            return -1;
+        }
+        int fd = _open_osfhandle((intptr_t)h, _O_RDONLY | _O_BINARY | _O_NOINHERIT);
+        if (fd < 0) {
+            CloseHandle(h);
+            errno = EMFILE;
+        }
         return fd;
     }
-    return _open(p, flags | _O_BINARY, mode);
+    return _open(p, (flags & ~KITTY_WIN32_NON_CRT_OPEN_FLAGS) | _O_BINARY, mode);
+}
+
+int
+kitty_win32_open(const char *path, int flags, ...) {
+    va_list ap;
+    va_start(ap, flags);
+    int mode = (flags & O_CREAT) ? va_arg(ap, int) : 0;
+    va_end(ap);
+    return openat(AT_FDCWD, path, flags, mode);
 }
 
 int
@@ -575,7 +642,8 @@ symlinkat(const char *target, int dirfd, const char *linkpath) {
     const char *p = resolve_at(dirfd, linkpath, buf, sizeof(buf));
     if (!p) return -1;
     wchar_t wtarget[32768], wlink[32768];
-    if (!MultiByteToWideChar(CP_UTF8, 0, target, -1, wtarget, (int)(sizeof(wtarget) / sizeof(wtarget[0]))) || !MultiByteToWideChar(CP_UTF8, 0, p, -1, wlink, (int)(sizeof(wlink) / sizeof(wlink[0])))) {
+    if (!MultiByteToWideChar(CP_UTF8, 0, target, -1, wtarget, (int)(sizeof(wtarget) / sizeof(wtarget[0]))) ||
+        !MultiByteToWideChar(CP_UTF8, 0, p, -1, wlink, (int)(sizeof(wlink) / sizeof(wlink[0])))) {
         errno = ENAMETOOLONG;
         return -1;
     }
@@ -604,12 +672,8 @@ lockf(int fd, int cmd, off_t len) {
     DWORD lo = len ? (DWORD)(len & 0xffffffff) : 0xffffffff, hi = len ? (DWORD)((uint64_t)len >> 32) : 0x7fffffff;
     BOOL ok;
     switch (cmd) {
-        case F_ULOCK:
-            ok = UnlockFileEx(h, 0, lo, hi, &ov);
-            break;
-        case F_LOCK:
-            ok = LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK, 0, lo, hi, &ov);
-            break;
+        case F_ULOCK: ok = UnlockFileEx(h, 0, lo, hi, &ov); break;
+        case F_LOCK: ok = LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK, 0, lo, hi, &ov); break;
         case F_TLOCK:
         case F_TEST:
             ok = LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, lo, hi, &ov);
@@ -619,9 +683,7 @@ lockf(int fd, int cmd, off_t len) {
             }
             if (ok && cmd == F_TEST) UnlockFileEx(h, 0, lo, hi, &ov);
             break;
-        default:
-            errno = EINVAL;
-            return -1;
+        default: errno = EINVAL; return -1;
     }
     if (!ok) {
         set_errno_from_last_error();
@@ -688,10 +750,111 @@ pwrite(int fd, const void *buf, size_t count, off_t offset) {
     return positional_io(fd, (void *)buf, count, offset, true);
 }
 
+// Reads the target of a symlink, returns the number of wchars or -1
+static ssize_t
+read_symlink_target(const char *path, wchar_t *target, size_t target_sz) {
+    wchar_t wpath[32768];
+    if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, (int)(sizeof(wpath) / sizeof(wpath[0])))) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    HANDLE h = CreateFileW(
+        wpath,
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+        NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        set_errno_from_last_error();
+        return -1;
+    }
+    // REPARSE_DATA_BUFFER from ntdef.h uses an anonymous union which is
+    // rejected by -pedantic
+    struct symlink_reparse_buffer {
+        ULONG ReparseTag;
+        USHORT ReparseDataLength;
+        USHORT Reserved;
+        USHORT SubstituteNameOffset;
+        USHORT SubstituteNameLength;
+        USHORT PrintNameOffset;
+        USHORT PrintNameLength;
+        ULONG Flags;
+        WCHAR PathBuffer[1];
+    };
+    union {
+        struct symlink_reparse_buffer rdb;
+        char raw[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+    } u;
+    DWORD ret = 0;
+    bool ok = DeviceIoControl(h, FSCTL_GET_REPARSE_POINT, NULL, 0, &u, sizeof(u), &ret, NULL);
+    DWORD err = GetLastError();
+    CloseHandle(h);
+    if (!ok) {
+        errno = err == ERROR_NOT_A_REPARSE_POINT ? EINVAL : EIO;
+        return -1;
+    }
+    if (u.rdb.ReparseTag != IO_REPARSE_TAG_SYMLINK) {
+        errno = EINVAL;
+        return -1;
+    }
+    const wchar_t *pb = u.rdb.PathBuffer;
+    const wchar_t *name = pb + u.rdb.PrintNameOffset / sizeof(wchar_t);
+    size_t len = u.rdb.PrintNameLength / sizeof(wchar_t);
+    if (!len) {
+        name = pb + u.rdb.SubstituteNameOffset / sizeof(wchar_t);
+        len = u.rdb.SubstituteNameLength / sizeof(wchar_t);
+        if (len >= 4 && wcsncmp(name, L"\\??\\", 4) == 0) {
+            name += 4;
+            len -= 4;
+        }
+    }
+    if (len >= target_sz) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    memcpy(target, name, len * sizeof(wchar_t));
+    target[len] = 0;
+    return (ssize_t)len;
+}
+
 ssize_t
-readlink(const char *path UNUSED, char *buf UNUSED, size_t bufsiz UNUSED) {
-    errno = EINVAL;
-    return -1;
+readlink(const char *path, char *buf, size_t bufsiz) {
+    wchar_t target[32768];
+    ssize_t len = read_symlink_target(path, target, sizeof(target) / sizeof(target[0]));
+    if (len < 0) return -1;
+    char utf8[32768 * 3];
+    int n = WideCharToMultiByte(CP_UTF8, 0, target, (int)len, utf8, (int)sizeof(utf8), NULL, NULL);
+    if (n <= 0) {
+        errno = EIO;
+        return -1;
+    }
+    if ((size_t)n > bufsiz) n = (int)bufsiz;
+    memcpy(buf, utf8, (size_t)n);
+    return n;
+}
+
+int
+kitty_win32_lstat(const char *path, struct stat *st) {
+    wchar_t wpath[32768];
+    if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, (int)(sizeof(wpath) / sizeof(wpath[0])))) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (GetFileAttributesExW(wpath, GetFileExInfoStandard, &fad) && (fad.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        wchar_t target[32768];
+        ssize_t len = read_symlink_target(path, target, sizeof(target) / sizeof(target[0]));
+        if (len >= 0) {
+            memset(st, 0, sizeof(*st));
+            st->st_mode = S_IFLNK | S_IRUSR | S_IWUSR;
+            st->st_nlink = 1;
+            st->st_size = WideCharToMultiByte(CP_UTF8, 0, target, (int)len, NULL, 0, NULL, NULL);
+            return 0;
+        }
+    }
+    return stat(path, st);
 }
 
 int
@@ -719,30 +882,14 @@ socket_for_fd(int fd) {
 static void
 set_errno_from_wsa_error(void) {
     switch (WSAGetLastError()) {
-        case WSAEINTR:
-            errno = EINTR;
-            break;
-        case WSAEWOULDBLOCK:
-            errno = EAGAIN;
-            break;
-        case WSAENOTSOCK:
-            errno = ENOTSOCK;
-            break;
-        case WSAECONNRESET:
-            errno = ECONNRESET;
-            break;
-        case WSAECONNREFUSED:
-            errno = ECONNREFUSED;
-            break;
-        case WSAEADDRINUSE:
-            errno = EADDRINUSE;
-            break;
-        case WSAEBADF:
-            errno = EBADF;
-            break;
-        default:
-            errno = EIO;
-            break;
+        case WSAEINTR: errno = EINTR; break;
+        case WSAEWOULDBLOCK: errno = EAGAIN; break;
+        case WSAENOTSOCK: errno = ENOTSOCK; break;
+        case WSAECONNRESET: errno = ECONNRESET; break;
+        case WSAECONNREFUSED: errno = ECONNREFUSED; break;
+        case WSAEADDRINUSE: errno = EADDRINUSE; break;
+        case WSAEBADF: errno = EBADF; break;
+        default: errno = EIO; break;
     }
 }
 
@@ -865,19 +1012,12 @@ static BOOL WINAPI
 console_ctrl_handler(DWORD ctrl_type) {
     int sig;
     switch (ctrl_type) {
-        case CTRL_C_EVENT:
-            sig = SIGINT;
-            break;
-        case CTRL_BREAK_EVENT:
-            sig = SIGTERM;
-            break;
+        case CTRL_C_EVENT: sig = SIGINT; break;
+        case CTRL_BREAK_EVENT: sig = SIGTERM; break;
         case CTRL_CLOSE_EVENT:
         case CTRL_LOGOFF_EVENT:
-        case CTRL_SHUTDOWN_EVENT:
-            sig = SIGHUP;
-            break;
-        default:
-            return FALSE;
+        case CTRL_SHUTDOWN_EVENT: sig = SIGHUP; break;
+        default: return FALSE;
     }
     struct sigaction *act = console_signal_actions + sig;
     if (act->sa_handler == SIG_DFL && !(act->sa_flags & SA_SIGINFO)) return FALSE;
@@ -903,6 +1043,179 @@ sigaction(int signum, const struct sigaction *act, struct sigaction *oldact) {
 }
 // }}}
 
+// files {{{
+int
+kitty_win32_open_readonly_shared(const char *path) {
+    wchar_t wpath[32768];
+    if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, (int)(sizeof(wpath) / sizeof(wpath[0])))) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    HANDLE h = CreateFileW(wpath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        set_errno_from_last_error();
+        return -1;
+    }
+    int fd = _open_osfhandle((intptr_t)h, _O_RDONLY | _O_BINARY | _O_NOINHERIT);
+    if (fd < 0) {
+        CloseHandle(h);
+        errno = EMFILE;
+    }
+    return fd;
+}
+
+int
+kitty_win32_open_anonymous_tmpfile(void) {
+    wchar_t dir[MAX_PATH + 1], path[MAX_PATH + 1];
+    DWORD n = GetTempPathW(MAX_PATH + 1, dir);
+    if (!n || n > MAX_PATH) {
+        errno = ENOENT;
+        return -1;
+    }
+    static const wchar_t chars[] = L"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    for (int attempt = 0; attempt < 100; attempt++) {
+        unsigned char rnd[12];
+        if (!secure_random_bytes_win32(rnd, sizeof(rnd))) {
+            errno = EIO;
+            return -1;
+        }
+        wchar_t suffix[sizeof(rnd) + 1];
+        for (size_t i = 0; i < sizeof(rnd); i++) suffix[i] = chars[rnd[i] % (sizeof(chars) / sizeof(chars[0]) - 1)];
+        suffix[sizeof(rnd)] = 0;
+        if (_snwprintf(path, MAX_PATH, L"%skitty-tmp-%s", dir, suffix) < 0) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+        HANDLE h = CreateFileW(path, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+        if (h == INVALID_HANDLE_VALUE) {
+            if (GetLastError() == ERROR_FILE_EXISTS) continue;
+            set_errno_from_last_error();
+            return -1;
+        }
+        int fd = _open_osfhandle((intptr_t)h, _O_RDWR | _O_BINARY | _O_NOINHERIT);
+        if (fd < 0) {
+            CloseHandle(h);
+            errno = EMFILE;
+        }
+        return fd;
+    }
+    errno = EEXIST;
+    return -1;
+}
+
+int
+kitty_win32_path_from_fd(int fd, char *buf, size_t bufsz) {
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
+    wchar_t wpath[32768];
+    DWORD n = GetFinalPathNameByHandleW(h, wpath, (DWORD)(sizeof(wpath) / sizeof(wpath[0])), FILE_NAME_NORMALIZED);
+    if (!n || n >= sizeof(wpath) / sizeof(wpath[0])) {
+        if (!n) set_errno_from_last_error();
+        else errno = ENAMETOOLONG;
+        return -1;
+    }
+    const wchar_t *p = wpath;
+    if (wcsncmp(p, L"\\\\?\\UNC\\", 8) == 0) {
+        p += 6; // \\?\UNC\server\share -> \\server\share
+        wpath[6] = L'\\';
+    } else if (wcsncmp(p, L"\\\\?\\", 4) == 0) p += 4;
+    if (!WideCharToMultiByte(CP_UTF8, 0, p, -1, buf, (int)bufsz, NULL, NULL)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    return 0;
+}
+
+static bool
+token_sid_matches(HANDLE token, TOKEN_INFORMATION_CLASS cls, PSID sid, bool *matches) {
+    DWORD sz = 0;
+    GetTokenInformation(token, cls, NULL, 0, &sz);
+    if (!sz) {
+        set_errno_from_last_error();
+        return false;
+    }
+    void *info = malloc(sz);
+    if (!info) {
+        errno = ENOMEM;
+        return false;
+    }
+    if (!GetTokenInformation(token, cls, info, sz, &sz)) {
+        set_errno_from_last_error();
+        free(info);
+        return false;
+    }
+    // TOKEN_USER and TOKEN_OWNER both start with a PSID
+    PSID token_sid = cls == TokenUser ? ((TOKEN_USER *)info)->User.Sid : ((TOKEN_OWNER *)info)->Owner;
+    *matches = EqualSid(sid, token_sid);
+    free(info);
+    return true;
+}
+
+int
+kitty_win32_fd_owned_by_current_user(int fd, bool *owned) {
+    *owned = false;
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
+    PSID owner = NULL;
+    PSECURITY_DESCRIPTOR sd = NULL;
+    DWORD r = GetSecurityInfo(h, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, &owner, NULL, NULL, NULL, &sd);
+    if (r != ERROR_SUCCESS) {
+        SetLastError(r);
+        set_errno_from_last_error();
+        return -1;
+    }
+    HANDLE token = NULL;
+    int ret = -1;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        // Objects created by elevated administrators are owned by the
+        // Administrators group rather than the user, so accept the token's
+        // default owner as well as its user.
+        bool is_user = false, is_default_owner = false;
+        if (token_sid_matches(token, TokenUser, owner, &is_user) && token_sid_matches(token, TokenOwner, owner, &is_default_owner)) {
+            *owned = is_user || is_default_owner;
+            ret = 0;
+        }
+        CloseHandle(token);
+    } else set_errno_from_last_error();
+    LocalFree(sd);
+    return ret;
+}
+
+size_t
+kitty_win32_num_logged_in_users(void) {
+    size_t users = 0;
+    PWTS_SESSION_INFOW sessions = NULL;
+    DWORD count = 0;
+    if (!WTSEnumerateSessionsW(WTS_CURRENT_SERVER_HANDLE, 0, 1, &sessions, &count)) return 0;
+    for (DWORD i = 0; i < count; i++) {
+        if (sessions[i].State != WTSActive) continue;
+        LPWSTR user = NULL;
+        DWORD sz = 0;
+        if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sessions[i].SessionId, WTSUserName, &user, &sz)) {
+            if (user && user[0]) users++;
+            WTSFreeMemory(user);
+        }
+    }
+    WTSFreeMemory(sessions);
+    return users;
+}
+// }}}
+
+// threads {{{
+bool
+kitty_win32_set_current_thread_name(const char *name) {
+    wchar_t wname[64] = {0};
+    if (!MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, (int)(sizeof(wname) / sizeof(wname[0])) - 1)) return false;
+    return SUCCEEDED(SetThreadDescription(GetCurrentThread(), wname));
+}
+// }}}
+
 // processes {{{
 int
 kill(pid_t pid, int sig) {
@@ -910,21 +1223,23 @@ kill(pid_t pid, int sig) {
         errno = ESRCH;
         return -1;
     }
-    HANDLE h = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
+    HANDLE h = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, (DWORD)pid);
     if (!h) {
         errno = GetLastError() == ERROR_ACCESS_DENIED ? EPERM : ESRCH;
         return -1;
     }
     int ret = 0;
     switch (sig) {
-        case 0:
-            break;
+        case 0: break;
         case SIGKILL:
         case SIGTERM:
         case SIGHUP:
         case SIGINT:
             if (!TerminateProcess(h, 128 + sig)) {
-                errno = GetLastError() == ERROR_ACCESS_DENIED ? EPERM : EINVAL;
+                DWORD err = GetLastError();
+                // TerminateProcess() on an already exited process fails with ERROR_ACCESS_DENIED
+                if (WaitForSingleObject(h, 0) == WAIT_OBJECT_0) errno = ESRCH;
+                else errno = err == ERROR_ACCESS_DENIED ? EPERM : EINVAL;
                 ret = -1;
             }
             break;
@@ -1069,11 +1384,15 @@ unsetenv(const char *name) {
     return _putenv_s(name, "") == 0 ? 0 : -1;
 }
 
-char*
+char *
 realpath(const char *path, char *resolved_path) {
     char *ans = _fullpath(resolved_path, path, resolved_path ? PATH_MAX : 0);
-    if (!ans) { errno = ENOENT; return NULL; }
-    for (char *p = ans; *p; p++) if (*p == '\\') *p = '/';
+    if (!ans) {
+        errno = ENOENT;
+        return NULL;
+    }
+    for (char *p = ans; *p; p++)
+        if (*p == '\\') *p = '/';
     return ans;
 }
 
@@ -1081,7 +1400,8 @@ bool
 win32_exe_path(char *buf, size_t buf_sz) {
     DWORD n = GetModuleFileNameA(NULL, buf, (DWORD)buf_sz);
     if (n == 0 || n >= buf_sz) return false;
-    for (char *p = buf; *p; p++) if (*p == '\\') *p = '/';
+    for (char *p = buf; *p; p++)
+        if (*p == '\\') *p = '/';
     return true;
 }
 
@@ -1089,12 +1409,19 @@ bool
 kitty_win32_append_quoted_arg(char *buf, size_t buf_sz, size_t *pos, const char *arg) {
     // Quoting rules for CommandLineToArgvW()
     bool needs_quotes = !*arg || strpbrk(arg, " \t\"") != NULL;
-#define emit(ch) { if (*pos + 1 >= buf_sz) return false; buf[(*pos)++] = ch; }
+#define emit(ch)                              \
+    {                                         \
+        if (*pos + 1 >= buf_sz) return false; \
+        buf[(*pos)++] = ch;                   \
+    }
     if (*pos) emit(' ');
     if (needs_quotes) emit('"');
     size_t backslashes = 0;
     for (const char *p = arg; *p; p++) {
-        if (*p == '\\') { backslashes++; continue; }
+        if (*p == '\\') {
+            backslashes++;
+            continue;
+        }
         if (*p == '"') {
             for (size_t i = 0; i < 2 * backslashes + 1; i++) emit('\\');
         } else {
@@ -1130,16 +1457,19 @@ bool
 win32_spawn_detached(char *const argv[]) {
     char exe[PATH_MAX + 1] = {0};
     if (!win32_exe_path(exe, sizeof(exe))) return false;
-    char cmdline[32768]; size_t pos = 0;
+    char cmdline[32768];
+    size_t pos = 0;
     if (!kitty_win32_append_quoted_arg(cmdline, sizeof(cmdline), &pos, exe)) return false;
-    for (int i = 1; argv[i]; i++) if (!kitty_win32_append_quoted_arg(cmdline, sizeof(cmdline), &pos, argv[i])) return false;
-    STARTUPINFOA si = { .cb = sizeof(si) };
+    for (int i = 1; argv[i]; i++)
+        if (!kitty_win32_append_quoted_arg(cmdline, sizeof(cmdline), &pos, argv[i])) return false;
+    STARTUPINFOA si = {.cb = sizeof(si)};
     PROCESS_INFORMATION pi = {0};
     if (!CreateProcessA(exe, cmdline, NULL, NULL, FALSE, DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, NULL, NULL, &si, &pi)) {
         set_errno_from_last_error();
         return false;
     }
-    CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
     return true;
 }
 // }}}

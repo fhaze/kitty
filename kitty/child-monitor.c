@@ -171,6 +171,12 @@ new_childmonitor_object(PyTypeObject *type, PyObject *args, PyObject UNUSED *kwd
         return NULL;
     }
     if (!PyArg_ParseTuple(args, "OO|iip", &death_notify, &dump_callback, &talk_fd, &listen_fd, &verify_peer_uid)) return NULL;
+#ifdef _WIN32
+    // Python socket objects expose raw SOCKET handles via fileno(), while the
+    // I/O loop works with CRT fds
+    if (talk_fd > -1 && (talk_fd = kitty_win32_fd_from_socket_handle(talk_fd)) < 0) return PyErr_SetFromErrno(PyExc_OSError);
+    if (listen_fd > -1 && (listen_fd = kitty_win32_fd_from_socket_handle(listen_fd)) < 0) return PyErr_SetFromErrno(PyExc_OSError);
+#endif
     if ((ret = pthread_mutex_init(&children_lock, NULL)) != 0) {
         PyErr_Format(PyExc_RuntimeError, "Failed to create children_lock mutex: %s", strerror(ret));
         return NULL;
@@ -599,7 +605,7 @@ parse_input(ChildMonitor *self) {
                     "peer_message_received",
                     "y#KO",
                     msg->data,
-                    (int)msg->sz,
+                    (Py_ssize_t)msg->sz,
                     msg->peer_id,
                     msg->is_remote_control_peer ? Py_True : Py_False);
                 free(msg->data);

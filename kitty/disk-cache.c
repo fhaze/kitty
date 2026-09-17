@@ -1100,7 +1100,7 @@ get(PyObject *self, PyObject *args) {
 
 static bool
 python_clear_predicate(void *data, void *key, unsigned keysz) {
-    PyObject *ret = PyObject_CallFunction(data, "y#", key, keysz);
+    PyObject *ret = PyObject_CallFunction(data, "y#", key, (Py_ssize_t)keysz);
     if (ret == NULL) {
         PyErr_Print();
         return false;

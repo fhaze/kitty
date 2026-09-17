@@ -26,7 +26,8 @@ log_error(const char *fmt, ...) {
 // TODO: implement single instance mode on Windows using AF_UNIX sockets (afunix.h) or named pipes
 void
 single_instance_main(int argc, char *argv[], const CLIOptions *opts) {
-    (void)argv; (void)opts;
+    (void)argv;
+    (void)opts;
     if (argc == -1) return;
     log_error("Warning: --single-instance is not yet supported on Windows, starting a new instance\n");
 }

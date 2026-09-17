@@ -742,7 +742,11 @@ load_image_data_from_file(
             FAIL_IMAGE_FILE("Refusing to read image file: %s as permission was denied", fname);
             return false;
         }
+#ifdef _WIN32
+        fd = kitty_win32_open_readonly_shared(fname);
+#else
         fd = safe_open(fname, O_CLOEXEC | O_RDONLY | O_NONBLOCK, 0); // O_NONBLOCK so that opening a FIFO pipe does not block
+#endif
     }
     if (fd == -1) {
         FAIL_IMAGE_FILE("Failed to open file for graphics transmission: %s with error: [%d] %s", fname, errno, strerror(errno));

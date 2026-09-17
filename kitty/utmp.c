@@ -21,6 +21,13 @@ num_users(PyObject *const self UNUSED, PyObject *const args UNUSED) {
     endutxent();
     Py_END_ALLOW_THREADS return PyLong_FromSize_t(users);
 }
+#elif defined(_WIN32)
+static PyObject *
+num_users(PyObject *const self UNUSED, PyObject *const args UNUSED) {
+    size_t users;
+    Py_BEGIN_ALLOW_THREADS users = kitty_win32_num_logged_in_users();
+    Py_END_ALLOW_THREADS return PyLong_FromSize_t(users);
+}
 #else
 static PyObject *
 num_users(PyObject *const self UNUSED, PyObject *const args UNUSED) {

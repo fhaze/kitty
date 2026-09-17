@@ -38,7 +38,7 @@ pid_from_arg(PyObject *pid_, DWORD *pid) {
     return true;
 }
 
-static PyObject*
+static PyObject *
 set_error_from_last_error(void) {
     return PyErr_SetFromWindowsErr(GetLastError());
 }
@@ -50,7 +50,7 @@ open_process(DWORD pid, DWORD access) {
     return h;
 }
 
-static PyObject*
+static PyObject *
 abspath_of_process(PyObject *self UNUSED, PyObject *pid_) {
     DWORD pid;
     if (!pid_from_arg(pid_, &pid)) return NULL;
@@ -65,14 +65,14 @@ abspath_of_process(PyObject *self UNUSED, PyObject *pid_) {
 }
 
 // Reading the PEB of another process {{{
-typedef NTSTATUS (NTAPI *NtQueryInformationProcess_func)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+typedef NTSTATUS(NTAPI *NtQueryInformationProcess_func)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 
 static NtQueryInformationProcess_func
 nt_query_information_process(void) {
     static NtQueryInformationProcess_func f = NULL;
     if (!f) {
         HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-        if (ntdll) f = (NtQueryInformationProcess_func)(void*)GetProcAddress(ntdll, "NtQueryInformationProcess");
+        if (ntdll) *(void **)(&f) = (void *)(uintptr_t)GetProcAddress(ntdll, "NtQueryInformationProcess");
     }
     return f;
 }
@@ -118,7 +118,7 @@ read_process_parameters(HANDLE h, KittyUserProcessParameters *params) {
     return read_remote(h, peb.ProcessParameters, params, sizeof(*params));
 }
 
-static PyObject*
+static PyObject *
 read_remote_unicode_string(HANDLE h, const UNICODE_STRING *s) {
     if (!s->Buffer || !s->Length) return PyUnicode_FromString("");
     wchar_t *buf = malloc(s->Length + sizeof(wchar_t));
@@ -132,7 +132,7 @@ read_remote_unicode_string(HANDLE h, const UNICODE_STRING *s) {
     return ans;
 }
 
-static PyObject*
+static PyObject *
 process_parameter_string(PyObject *pid_, bool want_cwd) {
     DWORD pid;
     if (!pid_from_arg(pid_, &pid)) return NULL;
@@ -140,15 +140,13 @@ process_parameter_string(PyObject *pid_, bool want_cwd) {
     if (!h) return NULL;
     KittyUserProcessParameters params;
     PyObject *ans = NULL;
-    if (read_process_parameters(h, &params)) {
-        ans = read_remote_unicode_string(h, want_cwd ? &params.CurrentDirectoryPath : &params.CommandLine);
-    }
+    if (read_process_parameters(h, &params)) { ans = read_remote_unicode_string(h, want_cwd ? &params.CurrentDirectoryPath : &params.CommandLine); }
     CloseHandle(h);
     return ans;
 }
 // }}}
 
-static PyObject*
+static PyObject *
 cwd_of_process(PyObject *self UNUSED, PyObject *pid_) {
     PyObject *ans = process_parameter_string(pid_, true);
     if (!ans) return NULL;
@@ -162,7 +160,7 @@ cwd_of_process(PyObject *self UNUSED, PyObject *pid_) {
     return ans;
 }
 
-static PyObject*
+static PyObject *
 cmdline_of_process(PyObject *self UNUSED, PyObject *pid_) {
     PyObject *cmdline = process_parameter_string(pid_, false);
     if (!cmdline) return NULL;
@@ -202,7 +200,7 @@ cmdline_of_process(PyObject *self UNUSED, PyObject *pid_) {
 }
 
 // Returns a tuple of (pid, parent_pid) for all processes on the system
-static PyObject*
+static PyObject *
 process_group_map(PyObject *self UNUSED, PyObject *args UNUSED) {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) return set_error_from_last_error();
@@ -234,20 +232,20 @@ memory_of_pid(DWORD pid) {
     if (!h) return 0;
     PROCESS_MEMORY_COUNTERS_EX pmc = {.cb = sizeof(pmc)};
     unsigned long long ans = 0;
-    if (GetProcessMemoryInfo(h, (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) ans = pmc.PrivateUsage;
+    if (GetProcessMemoryInfo(h, (PROCESS_MEMORY_COUNTERS *)&pmc, sizeof(pmc))) ans = pmc.PrivateUsage;
     CloseHandle(h);
     return ans;
 }
 
 // Memory used by the process and all its descendants
-static PyObject*
+static PyObject *
 memory_of_process_tree(PyObject *self UNUSED, PyObject *pid_) {
     DWORD root;
     if (!pid_from_arg(pid_, &root)) return NULL;
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) return set_error_from_last_error();
     size_t count = 0, cap = 256;
-    DWORD (*procs)[2] = malloc(cap * sizeof(*procs));
+    DWORD(*procs)[2] = malloc(cap * sizeof(*procs));
     if (!procs) {
         CloseHandle(snap);
         return PyErr_NoMemory();
@@ -256,7 +254,7 @@ memory_of_process_tree(PyObject *self UNUSED, PyObject *pid_) {
     for (BOOL ok = Process32FirstW(snap, &pe); ok; ok = Process32NextW(snap, &pe)) {
         if (count >= cap) {
             cap *= 2;
-            DWORD (*n)[2] = realloc(procs, cap * sizeof(*procs));
+            DWORD(*n)[2] = realloc(procs, cap * sizeof(*procs));
             if (!n) {
                 free(procs);
                 CloseHandle(snap);
@@ -275,7 +273,11 @@ memory_of_process_tree(PyObject *self UNUSED, PyObject *pid_) {
         return PyErr_NoMemory();
     }
     bool found_root = false;
-    for (size_t i = 0; i < count; i++) if (procs[i][0] == root) { in_tree[i] = true; found_root = true; }
+    for (size_t i = 0; i < count; i++)
+        if (procs[i][0] == root) {
+            in_tree[i] = true;
+            found_root = true;
+        }
     if (!found_root) {
         free(procs);
         free(in_tree);
@@ -297,7 +299,8 @@ memory_of_process_tree(PyObject *self UNUSED, PyObject *pid_) {
         }
     }
     unsigned long long total = 0;
-    for (size_t i = 0; i < count; i++) if (in_tree[i]) total += memory_of_pid(procs[i][0]);
+    for (size_t i = 0; i < count; i++)
+        if (in_tree[i]) total += memory_of_pid(procs[i][0]);
     free(procs);
     free(in_tree);
     return PyLong_FromUnsignedLongLong(total);
@@ -309,8 +312,7 @@ static PyMethodDef module_methods[] = {
     {"cmdline_of_process", cmdline_of_process, METH_O, ""},
     {"process_group_map", process_group_map, METH_NOARGS, ""},
     {"memory_of_process_tree", memory_of_process_tree, METH_O, ""},
-    {NULL, NULL, 0, NULL}
-};
+    {NULL, NULL, 0, NULL}};
 
 bool
 init_win32_process_info(PyObject *module) {

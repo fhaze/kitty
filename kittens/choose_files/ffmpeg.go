@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/kovidgoyal/kitty/tools/utils"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -17,7 +18,6 @@ import (
 	"github.com/kovidgoyal/kitty/tools/icons"
 	"github.com/kovidgoyal/kitty/tools/utils/humanize"
 	"github.com/kovidgoyal/kitty/tools/utils/images"
-	"golang.org/x/sys/unix"
 )
 
 var _ = fmt.Print
@@ -46,7 +46,7 @@ func ffmpeg_thumbnail(path, tempath string, wg *sync.WaitGroup) (ans *images.Ima
 	defer wg.Done()
 	cmd := ffmpeg_thumbnail_cmd(path, tempath)
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &unix.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = utils.DetachedSysProcAttr()
 	var stderr bytes.Buffer
 	cmd.Stdout = nil
 	cmd.Stderr = &stderr
@@ -84,7 +84,7 @@ func ffmpeg_metadata(path string, wg *sync.WaitGroup) (ans FFMpegMetadata, err e
 	defer wg.Done()
 	cmd := ffmpeg_metadata_cmd(path)
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &unix.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = utils.DetachedSysProcAttr()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

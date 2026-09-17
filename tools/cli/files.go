@@ -9,8 +9,6 @@ import (
 	"slices"
 	"strings"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/kovidgoyal/kitty/tools/utils"
 )
 
@@ -40,6 +38,12 @@ func CompleteFiles(prefix string, callback func(*FileEntry), cwd string) error {
 		}
 	}
 	location := absolutize_path(prefix)
+	// Completions use the separator the user typed. Windows accepts both, so
+	// only use the backslash when the prefix itself uses it exclusively.
+	sep := "/"
+	if utils.Sep != "/" && strings.Contains(prefix, utils.Sep) && !strings.Contains(prefix, "/") {
+		sep = utils.Sep
+	}
 	base_dir := ""
 	joinable_prefix := ""
 	switch prefix {
@@ -59,11 +63,11 @@ func CompleteFiles(prefix string, callback func(*FileEntry), cwd string) error {
 		base_dir = cwd
 		joinable_prefix = ""
 	default:
-		if strings.HasSuffix(prefix, utils.Sep) {
+		if strings.HasSuffix(prefix, sep) {
 			base_dir = location
 			joinable_prefix = prefix
 		} else {
-			idx := strings.LastIndex(prefix, utils.Sep)
+			idx := strings.LastIndex(prefix, sep)
 			if idx > -1 {
 				joinable_prefix = prefix[:idx+1]
 				base_dir = filepath.Dir(location)
@@ -107,7 +111,7 @@ func CompleteFiles(prefix string, callback func(*FileEntry), cwd string) error {
 			data.IsEmptyDir = err != nil || len(subentries) == 0
 		}
 		if data.IsDir {
-			data.CompletionCandidate += utils.Sep
+			data.CompletionCandidate += sep
 		}
 		callback(&data)
 	}
@@ -127,7 +131,7 @@ func CompleteExecutablesInPath(prefix string, paths ...string) []string {
 					// A symlink to a directory has IsDir() false but still passes the X_OK
 					// check, since directories are executable in the access(2) sense.
 					p := filepath.Join(dir, e.Name())
-					if unix.Access(p, unix.X_OK) == nil && !is_dir_or_symlink_to_dir(e, p) {
+					if utils.Access(p, utils.X_OK) == nil && !is_dir_or_symlink_to_dir(e, p) {
 						ans = append(ans, e.Name())
 					}
 				}
@@ -283,13 +287,13 @@ func CompleteExecutableFirstArg(completions *Completions, word string, arg_num i
 				entries, err := os.ReadDir(entry.Abspath)
 				if err == nil {
 					for _, x := range entries {
-						if x.IsDir() || unix.Access(filepath.Join(entry.Abspath, x.Name()), unix.X_OK) == nil {
+						if x.IsDir() || utils.Access(filepath.Join(entry.Abspath, x.Name()), utils.X_OK) == nil {
 							mg.AddMatch(entry.CompletionCandidate)
 							break
 						}
 					}
 				}
-			} else if unix.Access(entry.Abspath, unix.X_OK) == nil {
+			} else if utils.Access(entry.Abspath, utils.X_OK) == nil {
 				mg.AddMatch(entry.CompletionCandidate)
 			}
 		}, "")

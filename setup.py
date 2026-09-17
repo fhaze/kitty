@@ -819,7 +819,7 @@ def kitty_env(args: Options) -> Env:
     elif is_windows:
         cflags.extend(pkg_config('cairo-ft', '--cflags-only-I'))
         platform_libs = pkg_config('cairo-ft', '--libs')
-        platform_libs.extend('-lws2_32 -lbcrypt -lgdi32 -luser32 -lshell32 -ladvapi32 -lshlwapi -lole32 -luuid -ldwrite -lpsapi'.split())
+        platform_libs.extend('-lws2_32 -lbcrypt -lgdi32 -luser32 -lshell32 -ladvapi32 -lshlwapi -lole32 -luuid -ldwrite -lpsapi -lwtsapi32'.split())
     else:
         cflags.extend(pkg_config('cairo-fc', '--cflags-only-I'))
         platform_libs = []
@@ -1343,7 +1343,13 @@ def compile_glfw(compilation_database: CompilationDatabase, build_dsym: bool = F
                 print(error('Disabling building of wayland backend'), file=sys.stderr)
                 continue
         compile_c_extension(
-            genv, f'kitty/glfw-{module}', compilation_database, sources, all_headers, desc_prefix=f'[{module}] ', build_dsym=build_dsym,
+            genv,
+            f'kitty/glfw-{module}',
+            compilation_database,
+            sources,
+            all_headers,
+            desc_prefix=f'[{module}] ',
+            build_dsym=build_dsym,
             ext='.dll' if is_windows else '.so',
         )
 
@@ -1580,6 +1586,8 @@ def build_static_kittens(
     dest = os.path.join(destination_dir or launcher_dir, 'kitten')
     if for_platform:
         dest += f'-{for_platform[0]}-{for_platform[1]}'
+    elif is_windows:
+        dest += '.exe'
     src = os.path.abspath('tools/cmd')
 
     def run_one(dest: str) -> None:
@@ -1727,7 +1735,7 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
     link_targets.append(os.path.abspath(dest))
     desc = f'Linking {emphasis("launcher")} ...'
     if is_windows:
-        libs += ['-lws2_32', '-lshlwapi']
+        libs += ['-lws2_32', '-lshlwapi', '-lbcrypt', '-ladvapi32', '-lwtsapi32']
     cmd = env.cc + ldflags + objects + libs + pylib + ['-o', dest]
     args.compilation_database.add_command(desc, cmd, partial(newer, dest, *objects), key=LinkKey('kitty' + exe_ext))
     if args.build_dsym and is_macos:

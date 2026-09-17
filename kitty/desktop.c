@@ -258,7 +258,11 @@ canberra_play_loop(void *x UNUSED) {
 void
 play_canberra_sound(const char *which_sound, const char *event_id, bool is_path, const char *media_role, const char *theme_name) {
 #ifdef _WIN32
-    (void)which_sound; (void)event_id; (void)is_path; (void)media_role; (void)theme_name;
+    (void)which_sound;
+    (void)event_id;
+    (void)is_path;
+    (void)media_role;
+    (void)theme_name;
     kitty_win32_beep();
     return;
 #endif

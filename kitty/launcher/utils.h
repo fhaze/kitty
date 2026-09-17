@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <ctype.h>
 #ifdef _WIN32
 #include "../win32-compat.h"
 #else
@@ -93,10 +94,32 @@ expand_tilde(const char *path, char *ans, size_t ans_sz) {
     safe_snprintf(ans, ans_sz, "%s%s%s", prefix, sep, path + 1);
 }
 
+// Length of the root prefix that path components must not be popped past:
+// "C:/" -> 3, "//" -> 2 (UNC), "/" or relative -> 0
+static size_t
+path_root_len(const char *path) {
+#ifdef _WIN32
+#define is_sep(c) ((c) == '/' || (c) == '\\')
+    if (isalpha((unsigned char)path[0]) && path[1] == ':') return is_sep(path[2]) ? 3 : 2;
+    if (is_sep(path[0]) && is_sep(path[1])) return 2;
+#undef is_sep
+#else
+    (void)path;
+#endif
+    return 0;
+}
+
 static size_t
 clean_path(char *path) {
-    char *write_ptr = path;
-    char *read_ptr = path;
+#ifdef _WIN32
+    for (char *p = path; *p; p++)
+        if (*p == '\\') *p = '/';
+#endif
+    char *root = path + path_root_len(path);
+    // start on the root's trailing slash so the first component is handled like any other
+    char *start = root > path && root[-1] == '/' ? root - 1 : root;
+    char *write_ptr = start;
+    char *read_ptr = start;
     while (*read_ptr) {
         if (read_ptr[0] != '/') {
             *write_ptr++ = *read_ptr++;
@@ -123,14 +146,16 @@ clean_path(char *path) {
         // we have /..
         if (read_ptr[3] == '/' || !read_ptr[3]) {
             read_ptr += 3;
-            while (write_ptr > path) {
+            while (write_ptr > start) {
                 write_ptr--;
                 if (*write_ptr == '/') break;
             }
         } else *write_ptr++ = *read_ptr++;
     }
+    if (write_ptr < root) write_ptr = root;
     // remove trailing slashes
-    while (write_ptr > path + 1 && *(write_ptr - 1) == '/') write_ptr--;
+    char *min_end = root > path ? root : path + 1;
+    while (write_ptr > min_end && *(write_ptr - 1) == '/') write_ptr--;
     // Null-terminate the normalized path
     *write_ptr++ = '\0';
     return write_ptr - path - 1;
@@ -146,15 +171,27 @@ lexical_absolute_path(const char *relative, char *output, size_t outsz) {
         fprintf(stderr, "Out of buffer space making absolute path for: %s with cwd: %s\n", relative, output); \
         exit(1);                                                                                              \
     }
-    if (relative[0] != '/') {
+#ifdef _WIN32
+    bool is_absolute = path_root_len(relative) > 0;
+    // A leading slash without a drive is relative to the drive of the cwd
+    bool is_drive_relative = !is_absolute && (relative[0] == '/' || relative[0] == '\\');
+#else
+    bool is_absolute = relative[0] == '/';
+    bool is_drive_relative = false;
+#endif
+    if (!is_absolute) {
         if (!getcwd(output, outsz)) {
             perror("Getting the current working directory failed with error");
             exit(1);
         }
         size_t cwdlen = strlen(output);
+        if (is_drive_relative) {
+            cwdlen = isalpha((unsigned char)output[0]) && output[1] == ':' ? 2 : 0;
+            output[cwdlen] = 0;
+        }
         write_ptr = output + cwdlen;
         _ensure_space(cwdlen + rlen + 2);
-        if (rlen && cwdlen && *(write_ptr - 1) != '/') *(write_ptr++) = '/';
+        if (rlen && cwdlen && !is_drive_relative && *(write_ptr - 1) != '/' && *(write_ptr - 1) != '\\') *(write_ptr++) = '/';
     } else {
         _ensure_space(rlen + 2);
     }

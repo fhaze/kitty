@@ -40,7 +40,7 @@ cleanup_free(void *p) {
 
 static bool being_tested = false;
 
-#ifndef __FreeBSD__
+#if !defined(__FreeBSD__) && !defined(_WIN32)
 static bool
 safe_realpath(const char *src, char *buf, size_t buf_sz) {
     RAII_ALLOC(char, ans, realpath(src, NULL));
@@ -611,6 +611,9 @@ main(int argc_, char *argv_[], char *envp[]) {
     if (argc_ > 1 && strcmp(argv_[1], "+testing-launcher-code") == 0) {
         being_tested = true;
         memmove(argv_ + 1, argv_ + 2, (--argc_ - 1) * sizeof(argv_[0]));
+#ifdef _WIN32
+        _setmode(_fileno(stdout), _O_BINARY);
+#endif
     }
     if (!ensure_working_stdio()) return 1;
     char exe[PATH_MAX + 1] = {0};

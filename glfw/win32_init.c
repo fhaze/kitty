@@ -35,7 +35,7 @@
 #if defined(_GLFW_USE_HYBRID_HPG) || defined(_GLFW_USE_OPTIMUS_HPG)
 
 #if defined(_GLFW_BUILD_DLL)
- #pragma message("These symbols must be exported by the executable and have no effect in a DLL")
+#pragma message("These symbols must be exported by the executable and have no effect in a DLL")
 #endif
 
 // Executables (but not DLLs) exporting this symbol with this value will be
@@ -56,8 +56,8 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
 // GLFW DLL entry point
 //
-BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
-{
+BOOL WINAPI
+DllMain(HINSTANCE instance UNUSED, DWORD reason UNUSED, LPVOID reserved UNUSED) {
     return TRUE;
 }
 
@@ -65,96 +65,66 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
 
 // Load necessary libraries (DLLs)
 //
-static bool loadLibraries(void)
-{
-    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            (const WCHAR*) &_glfw,
-                            (HMODULE*) &_glfw.win32.instance))
-    {
-        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                             "Win32: Failed to retrieve own module handle");
+static bool
+loadLibraries(void) {
+    if (!GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (const WCHAR *)&_glfw, (HMODULE *)&_glfw.win32.instance)) {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR, "Win32: Failed to retrieve own module handle");
         return false;
     }
 
     _glfw.win32.user32.instance = LoadLibraryA("user32.dll");
-    if (!_glfw.win32.user32.instance)
-    {
-        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                             "Win32: Failed to load user32.dll");
+    if (!_glfw.win32.user32.instance) {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR, "Win32: Failed to load user32.dll");
         return false;
     }
 
-    _glfw.win32.user32.SetProcessDPIAware_ = (PFN_SetProcessDPIAware)
-        GetProcAddress(_glfw.win32.user32.instance, "SetProcessDPIAware");
-    _glfw.win32.user32.ChangeWindowMessageFilterEx_ = (PFN_ChangeWindowMessageFilterEx)
-        GetProcAddress(_glfw.win32.user32.instance, "ChangeWindowMessageFilterEx");
-    _glfw.win32.user32.EnableNonClientDpiScaling_ = (PFN_EnableNonClientDpiScaling)
-        GetProcAddress(_glfw.win32.user32.instance, "EnableNonClientDpiScaling");
-    _glfw.win32.user32.SetProcessDpiAwarenessContext_ = (PFN_SetProcessDpiAwarenessContext)
-        GetProcAddress(_glfw.win32.user32.instance, "SetProcessDpiAwarenessContext");
-    _glfw.win32.user32.GetDpiForWindow_ = (PFN_GetDpiForWindow)
-        GetProcAddress(_glfw.win32.user32.instance, "GetDpiForWindow");
-    _glfw.win32.user32.AdjustWindowRectExForDpi_ = (PFN_AdjustWindowRectExForDpi)
-        GetProcAddress(_glfw.win32.user32.instance, "AdjustWindowRectExForDpi");
-    _glfw.win32.user32.GetSystemMetricsForDpi_ = (PFN_GetSystemMetricsForDpi)
-        GetProcAddress(_glfw.win32.user32.instance, "GetSystemMetricsForDpi");
+    glfw_dlsym(_glfw.win32.user32.SetProcessDPIAware_, _glfw.win32.user32.instance, "SetProcessDPIAware");
+    glfw_dlsym(_glfw.win32.user32.ChangeWindowMessageFilterEx_, _glfw.win32.user32.instance, "ChangeWindowMessageFilterEx");
+    glfw_dlsym(_glfw.win32.user32.EnableNonClientDpiScaling_, _glfw.win32.user32.instance, "EnableNonClientDpiScaling");
+    glfw_dlsym(_glfw.win32.user32.SetProcessDpiAwarenessContext_, _glfw.win32.user32.instance, "SetProcessDpiAwarenessContext");
+    glfw_dlsym(_glfw.win32.user32.GetDpiForWindow_, _glfw.win32.user32.instance, "GetDpiForWindow");
+    glfw_dlsym(_glfw.win32.user32.AdjustWindowRectExForDpi_, _glfw.win32.user32.instance, "AdjustWindowRectExForDpi");
+    glfw_dlsym(_glfw.win32.user32.GetSystemMetricsForDpi_, _glfw.win32.user32.instance, "GetSystemMetricsForDpi");
 
     _glfw.win32.dwmapi.instance = LoadLibraryA("dwmapi.dll");
-    if (_glfw.win32.dwmapi.instance)
-    {
-        _glfw.win32.dwmapi.IsCompositionEnabled = (PFN_DwmIsCompositionEnabled)
-            GetProcAddress(_glfw.win32.dwmapi.instance, "DwmIsCompositionEnabled");
-        _glfw.win32.dwmapi.Flush = (PFN_DwmFlush)
-            GetProcAddress(_glfw.win32.dwmapi.instance, "DwmFlush");
-        _glfw.win32.dwmapi.EnableBlurBehindWindow = (PFN_DwmEnableBlurBehindWindow)
-            GetProcAddress(_glfw.win32.dwmapi.instance, "DwmEnableBlurBehindWindow");
-        _glfw.win32.dwmapi.GetColorizationColor = (PFN_DwmGetColorizationColor)
-            GetProcAddress(_glfw.win32.dwmapi.instance, "DwmGetColorizationColor");
-        _glfw.win32.dwmapi.SetWindowAttribute = (PFN_DwmSetWindowAttribute)
-            GetProcAddress(_glfw.win32.dwmapi.instance, "DwmSetWindowAttribute");
+    if (_glfw.win32.dwmapi.instance) {
+        glfw_dlsym(_glfw.win32.dwmapi.IsCompositionEnabled, _glfw.win32.dwmapi.instance, "DwmIsCompositionEnabled");
+        glfw_dlsym(_glfw.win32.dwmapi.Flush, _glfw.win32.dwmapi.instance, "DwmFlush");
+        glfw_dlsym(_glfw.win32.dwmapi.EnableBlurBehindWindow, _glfw.win32.dwmapi.instance, "DwmEnableBlurBehindWindow");
+        glfw_dlsym(_glfw.win32.dwmapi.GetColorizationColor, _glfw.win32.dwmapi.instance, "DwmGetColorizationColor");
+        glfw_dlsym(_glfw.win32.dwmapi.SetWindowAttribute, _glfw.win32.dwmapi.instance, "DwmSetWindowAttribute");
     }
 
     _glfw.win32.shcore.instance = LoadLibraryA("shcore.dll");
-    if (_glfw.win32.shcore.instance)
-    {
-        _glfw.win32.shcore.SetProcessDpiAwareness_ = (PFN_SetProcessDpiAwareness)
-            GetProcAddress(_glfw.win32.shcore.instance, "SetProcessDpiAwareness");
-        _glfw.win32.shcore.GetDpiForMonitor_ = (PFN_GetDpiForMonitor)
-            GetProcAddress(_glfw.win32.shcore.instance, "GetDpiForMonitor");
+    if (_glfw.win32.shcore.instance) {
+        glfw_dlsym(_glfw.win32.shcore.SetProcessDpiAwareness_, _glfw.win32.shcore.instance, "SetProcessDpiAwareness");
+        glfw_dlsym(_glfw.win32.shcore.GetDpiForMonitor_, _glfw.win32.shcore.instance, "GetDpiForMonitor");
     }
 
     _glfw.win32.ntdll.instance = LoadLibraryA("ntdll.dll");
-    if (_glfw.win32.ntdll.instance)
-    {
-        _glfw.win32.ntdll.RtlVerifyVersionInfo_ = (PFN_RtlVerifyVersionInfo)
-            GetProcAddress(_glfw.win32.ntdll.instance, "RtlVerifyVersionInfo");
-    }
+    if (_glfw.win32.ntdll.instance) { glfw_dlsym(_glfw.win32.ntdll.RtlVerifyVersionInfo_, _glfw.win32.ntdll.instance, "RtlVerifyVersionInfo"); }
 
     return true;
 }
 
 // Unload used libraries (DLLs)
 //
-static void freeLibraries(void)
-{
-    if (_glfw.win32.user32.instance)
-        FreeLibrary(_glfw.win32.user32.instance);
+static void
+freeLibraries(void) {
+    if (_glfw.win32.user32.instance) FreeLibrary(_glfw.win32.user32.instance);
 
-    if (_glfw.win32.dwmapi.instance)
-        FreeLibrary(_glfw.win32.dwmapi.instance);
+    if (_glfw.win32.dwmapi.instance) FreeLibrary(_glfw.win32.dwmapi.instance);
 
-    if (_glfw.win32.shcore.instance)
-        FreeLibrary(_glfw.win32.shcore.instance);
+    if (_glfw.win32.shcore.instance) FreeLibrary(_glfw.win32.shcore.instance);
 
-    if (_glfw.win32.ntdll.instance)
-        FreeLibrary(_glfw.win32.ntdll.instance);
+    if (_glfw.win32.ntdll.instance) FreeLibrary(_glfw.win32.ntdll.instance);
 }
 
 // Create key code translation tables
 //
-static void createKeyTables(void)
-{
+static void
+createKeyTables(void) {
     memset(_glfw.win32.keycodes, 0, sizeof(_glfw.win32.keycodes));
 
     _glfw.win32.keycodes[0x00B] = '0';
@@ -281,24 +251,26 @@ static void createKeyTables(void)
 
 // Creates a dummy window for behind-the-scenes work
 //
-static bool createHelperWindow(void)
-{
+static bool
+createHelperWindow(void) {
     MSG msg;
 
-    _glfw.win32.helperWindowHandle =
-        CreateWindowExW(WS_EX_OVERLAPPEDWINDOW,
-                        _GLFW_WNDCLASSNAME,
-                        L"GLFW message window",
-                        WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
-                        0, 0, 1, 1,
-                        NULL, NULL,
-                        _glfw.win32.instance,
-                        NULL);
+    _glfw.win32.helperWindowHandle = CreateWindowExW(
+        WS_EX_OVERLAPPEDWINDOW,
+        _GLFW_WNDCLASSNAME,
+        L"GLFW message window",
+        WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+        0,
+        0,
+        1,
+        1,
+        NULL,
+        NULL,
+        _glfw.win32.instance,
+        NULL);
 
-    if (!_glfw.win32.helperWindowHandle)
-    {
-        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                             "Win32: Failed to create helper window");
+    if (!_glfw.win32.helperWindowHandle) {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR, "Win32: Failed to create helper window");
         return false;
     }
 
@@ -306,13 +278,12 @@ static bool createHelperWindow(void)
     //       process passed along a STARTUPINFO, so clear that with a no-op call
     ShowWindow(_glfw.win32.helperWindowHandle, SW_HIDE);
 
-    while (PeekMessageW(&msg, _glfw.win32.helperWindowHandle, 0, 0, PM_REMOVE))
-    {
+    while (PeekMessageW(&msg, _glfw.win32.helperWindowHandle, 0, 0, PM_REMOVE)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
 
-   return true;
+    return true;
 }
 
 
@@ -322,25 +293,21 @@ static bool createHelperWindow(void)
 
 // Returns a wide string version of the specified UTF-8 string
 //
-WCHAR* _glfwCreateWideStringFromUTF8Win32(const char* source)
-{
-    WCHAR* target;
+WCHAR *
+_glfwCreateWideStringFromUTF8Win32(const char *source) {
+    WCHAR *target;
     int count;
 
     count = MultiByteToWideChar(CP_UTF8, 0, source, -1, NULL, 0);
-    if (!count)
-    {
-        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                             "Win32: Failed to convert string from UTF-8");
+    if (!count) {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR, "Win32: Failed to convert string from UTF-8");
         return NULL;
     }
 
     target = calloc(count, sizeof(WCHAR));
 
-    if (!MultiByteToWideChar(CP_UTF8, 0, source, -1, target, count))
-    {
-        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                             "Win32: Failed to convert string from UTF-8");
+    if (!MultiByteToWideChar(CP_UTF8, 0, source, -1, target, count)) {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR, "Win32: Failed to convert string from UTF-8");
         free(target);
         return NULL;
     }
@@ -350,25 +317,21 @@ WCHAR* _glfwCreateWideStringFromUTF8Win32(const char* source)
 
 // Returns a UTF-8 string version of the specified wide string
 //
-char* _glfwCreateUTF8FromWideStringWin32(const WCHAR* source)
-{
-    char* target;
+char *
+_glfwCreateUTF8FromWideStringWin32(const WCHAR *source) {
+    char *target;
     int size;
 
     size = WideCharToMultiByte(CP_UTF8, 0, source, -1, NULL, 0, NULL, NULL);
-    if (!size)
-    {
-        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                             "Win32: Failed to convert string to UTF-8");
+    if (!size) {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR, "Win32: Failed to convert string to UTF-8");
         return NULL;
     }
 
     target = calloc(size, 1);
 
-    if (!WideCharToMultiByte(CP_UTF8, 0, source, -1, target, size, NULL, NULL))
-    {
-        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR,
-                             "Win32: Failed to convert string to UTF-8");
+    if (!WideCharToMultiByte(CP_UTF8, 0, source, -1, target, size, NULL, NULL)) {
+        _glfwInputErrorWin32(GLFW_PLATFORM_ERROR, "Win32: Failed to convert string to UTF-8");
         free(target);
         return NULL;
     }
@@ -378,20 +341,19 @@ char* _glfwCreateUTF8FromWideStringWin32(const WCHAR* source)
 
 // Reports the specified error, appending information about the last Win32 error
 //
-void _glfwInputErrorWin32(int error, const char* description)
-{
+void
+_glfwInputErrorWin32(int error, const char *description) {
     WCHAR buffer[_GLFW_MESSAGE_SIZE] = L"";
     char message[_GLFW_MESSAGE_SIZE] = "";
 
-    FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM |
-                       FORMAT_MESSAGE_IGNORE_INSERTS |
-                       FORMAT_MESSAGE_MAX_WIDTH_MASK,
-                   NULL,
-                   GetLastError() & 0xffff,
-                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                   buffer,
-                   sizeof(buffer) / sizeof(WCHAR),
-                   NULL);
+    FormatMessageW(
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_MAX_WIDTH_MASK,
+        NULL,
+        GetLastError() & 0xffff,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        buffer,
+        sizeof(buffer) / sizeof(WCHAR),
+        NULL);
     WideCharToMultiByte(CP_UTF8, 0, buffer, -1, message, sizeof(message), NULL, NULL);
 
     _glfwInputError(error, "%s: %s", description, message);
@@ -399,39 +361,34 @@ void _glfwInputErrorWin32(int error, const char* description)
 
 // Updates key names according to the current keyboard layout
 //
-void _glfwUpdateKeyNamesWin32(void)
-{
+void
+_glfwUpdateKeyNamesWin32(void) {
     BYTE state[256] = {0};
     memset(_glfw.win32.keynames, 0, sizeof(_glfw.win32.keynames));
 
-    for (int scancode = 0; scancode < 512; scancode++)
-    {
+    for (int scancode = 0; scancode < 512; scancode++) {
         WCHAR chars[16];
         const uint32_t key = _glfw.win32.keycodes[scancode];
         if (!key || key >= GLFW_FKEY_FIRST) continue;
-        UINT vk = MapVirtualKeyW((UINT) scancode, MAPVK_VSC_TO_VK_EX);
+        UINT vk = MapVirtualKeyW((UINT)scancode, MAPVK_VSC_TO_VK_EX);
         if (!vk) continue;
         int length = ToUnicode(vk, scancode, state, chars, sizeof(chars) / sizeof(WCHAR), 0x4);
-        if (length == -1)
-        {
+        if (length == -1) {
             // This is a dead key, so we need a second simulated key press
             // to make it output its own character (usually a diacritic)
             length = ToUnicode(vk, scancode, state, chars, sizeof(chars) / sizeof(WCHAR), 0x4);
         }
         if (length < 1) continue;
-        WideCharToMultiByte(CP_UTF8, 0, chars, 1,
-                            _glfw.win32.keynames[scancode],
-                            sizeof(_glfw.win32.keynames[scancode]) - 1,
-                            NULL, NULL);
+        WideCharToMultiByte(CP_UTF8, 0, chars, 1, _glfw.win32.keynames[scancode], sizeof(_glfw.win32.keynames[scancode]) - 1, NULL, NULL);
     }
 }
 
 // Replacement for IsWindowsVersionOrGreater, as we cannot rely on the
 // application having a correct embedded manifest
 //
-BOOL _glfwIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp)
-{
-    OSVERSIONINFOEXW osvi = { sizeof(osvi), major, minor, 0, 0, {0}, sp };
+BOOL
+_glfwIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp) {
+    OSVERSIONINFOEXW osvi = {sizeof(osvi), major, minor, 0, 0, {0}, sp};
     DWORD mask = VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR;
     ULONGLONG cond = VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL);
     cond = VerSetConditionMask(cond, VER_MINORVERSION, VER_GREATER_EQUAL);
@@ -444,9 +401,9 @@ BOOL _glfwIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp)
 
 // Checks whether we are on at least the specified build of Windows 10
 //
-BOOL _glfwIsWindows10BuildOrGreaterWin32(WORD build)
-{
-    OSVERSIONINFOEXW osvi = { sizeof(osvi), 10, 0, build };
+BOOL
+_glfwIsWindows10BuildOrGreaterWin32(WORD build) {
+    OSVERSIONINFOEXW osvi = {sizeof(osvi), 10, 0, build};
     DWORD mask = VER_MAJORVERSION | VER_MINORVERSION | VER_BUILDNUMBER;
     ULONGLONG cond = VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL);
     cond = VerSetConditionMask(cond, VER_MINORVERSION, VER_GREATER_EQUAL);
@@ -462,52 +419,41 @@ BOOL _glfwIsWindows10BuildOrGreaterWin32(WORD build)
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-int _glfwPlatformInit(bool *supports_window_occlusion)
-{
+int
+_glfwPlatformInit(bool *supports_window_occlusion) {
     *supports_window_occlusion = false;
     _glfw.win32.mainThreadId = GetCurrentThreadId();
     // To make SetForegroundWindow work as we want, we need to fiddle
     // with the FOREGROUNDLOCKTIMEOUT system setting (we do this as early
     // as possible in the hope of still being the foreground process)
-    SystemParametersInfoW(SPI_GETFOREGROUNDLOCKTIMEOUT, 0,
-                          &_glfw.win32.foregroundLockTimeout, 0);
-    SystemParametersInfoW(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, UIntToPtr(0),
-                          SPIF_SENDCHANGE);
+    SystemParametersInfoW(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &_glfw.win32.foregroundLockTimeout, 0);
+    SystemParametersInfoW(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, UIntToPtr(0), SPIF_SENDCHANGE);
 
-    if (!loadLibraries())
-        return false;
+    if (!loadLibraries()) return false;
 
     createKeyTables();
     _glfwUpdateKeyNamesWin32();
 
-    if (_glfwIsWindows10CreatorsUpdateOrGreaterWin32())
-        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    else if (IsWindows8Point1OrGreater())
-        SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
-    else if (IsWindowsVistaOrGreater())
-        SetProcessDPIAware();
+    if (_glfwIsWindows10CreatorsUpdateOrGreaterWin32()) SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    else if (IsWindows8Point1OrGreater()) SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+    else if (IsWindowsVistaOrGreater()) SetProcessDPIAware();
 
-    if (!_glfwRegisterWindowClassWin32())
-        return false;
+    if (!_glfwRegisterWindowClassWin32()) return false;
 
-    if (!createHelperWindow())
-        return false;
+    if (!createHelperWindow()) return false;
 
     _glfwPollMonitorsWin32();
     return true;
 }
 
-void _glfwPlatformTerminate(void)
-{
-    if (_glfw.win32.helperWindowHandle)
-        DestroyWindow(_glfw.win32.helperWindowHandle);
+void
+_glfwPlatformTerminate(void) {
+    if (_glfw.win32.helperWindowHandle) DestroyWindow(_glfw.win32.helperWindowHandle);
 
     _glfwUnregisterWindowClassWin32();
 
     // Restore previous foreground lock timeout system setting
-    SystemParametersInfoW(SPI_SETFOREGROUNDLOCKTIMEOUT, 0,
-                          UIntToPtr(_glfw.win32.foregroundLockTimeout),
-                          SPIF_SENDCHANGE);
+    SystemParametersInfoW(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, UIntToPtr(_glfw.win32.foregroundLockTimeout), SPIF_SENDCHANGE);
 
     free(_glfw.win32.clipboardString);
     free(_glfw.win32.rawInput);
@@ -521,20 +467,19 @@ void _glfwPlatformTerminate(void)
     freeLibraries();
 }
 
-const char* _glfwPlatformGetVersionString(void)
-{
+const char *
+_glfwPlatformGetVersionString(void) {
     return _GLFW_VERSION_NUMBER " Win32 WGL EGL OSMesa"
 #if defined(__MINGW32__)
-        " MinGW"
+                                " MinGW"
 #elif defined(_MSC_VER)
-        " VisualC"
+                                " VisualC"
 #endif
 #if defined(_GLFW_USE_HYBRID_HPG) || defined(_GLFW_USE_OPTIMUS_HPG)
-        " hybrid-GPU"
+                                " hybrid-GPU"
 #endif
 #if defined(_GLFW_BUILD_DLL)
-        " DLL"
+                                " DLL"
 #endif
         ;
 }
-

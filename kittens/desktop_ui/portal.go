@@ -1,3 +1,5 @@
+//go:build !windows
+
 package desktop_ui
 
 import (
@@ -338,7 +340,7 @@ func IsDir(x string) bool {
 
 var WritableDataDirs = sync.OnceValue(func() (ans []string) {
 	for _, x := range DataDirs() {
-		if err := os.MkdirAll(x, 0o755); err == nil && unix.Access(x, unix.W_OK) == nil {
+		if err := os.MkdirAll(x, 0o755); err == nil && utils.Access(x, utils.W_OK) == nil {
 			ans = append(ans, x)
 		}
 	}
@@ -396,7 +398,7 @@ func enable_portal() (err error) {
 	for _, x := range WritableDataDirs() {
 		// Find-or-create the first available xdg-desktop-portals/portals directory
 		q := filepath.Join(x, "xdg-desktop-portal", "portals")
-		if (unix.Access(q, unix.W_OK) == nil && IsDir(q)) || (os.MkdirAll(q, 0o755) == nil) {
+		if (utils.Access(q, utils.W_OK) == nil && IsDir(q)) || (os.MkdirAll(q, 0o755) == nil) {
 			portals_dir = q
 			break
 		}
@@ -848,7 +850,7 @@ func (self *Portal) run_file_chooser(cfd ChooseFilesData) (response uint32, resu
 		if target == "" {
 			target = "~"
 		} else {
-			if st, err := os.Stat(cfd.Cwd); err == nil && st.IsDir() && unix.Access(cfd.Cwd, unix.R_OK|unix.X_OK) == nil {
+			if st, err := os.Stat(cfd.Cwd); err == nil && st.IsDir() && utils.Access(cfd.Cwd, utils.R_OK|utils.X_OK) == nil {
 				target = cfd.Cwd
 			} else {
 				target = "~"

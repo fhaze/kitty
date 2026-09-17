@@ -139,12 +139,12 @@ class TestBuild(BaseTest):
             self.assertIn('dictation forwarding probe passed', cp.stdout)
 
     def test_glfw_modules(self) -> None:
-        from kitty.constants import glfw_path, is_macos
+        from kitty.constants import glfw_path, is_macos, is_windows
 
         linux_backends = ['x11']
         if not self.is_ci:
             linux_backends.append('wayland')
-        modules = ['cocoa'] if is_macos else linux_backends
+        modules = ['cocoa'] if is_macos else ['win32'] if is_windows else linux_backends
         for name in modules:
             path = glfw_path(name)
             self.assertTrue(os.path.isfile(path), f'{path} is not a file')
@@ -175,7 +175,10 @@ class TestBuild(BaseTest):
 
         for x in ('kitty', 'kitten'):
             x = os.path.join(shell_integration_dir, 'ssh', x)
-            self.assertTrue(is_executable(x), f'{x} is not executable')
+            if sys.platform == 'win32':  # no executable bit on Windows
+                self.assertTrue(os.path.isfile(x), f'{x} does not exist')
+            else:
+                self.assertTrue(is_executable(x), f'{x} is not executable')
         if getattr(sys, 'frozen', False):
             self.assertTrue(os.path.isdir(local_docs()), f'Local docs: {local_docs()}')
 

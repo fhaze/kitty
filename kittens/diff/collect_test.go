@@ -30,12 +30,12 @@ func TestDiffCollectWalk(t *testing.T) {
 	_ = os.WriteFile(j("f/g"), nil, 0o600)
 	_ = os.WriteFile(j("h space"), nil, 0o600)
 
-	expected_names := utils.NewSetWithItems("d", "e", "f/g", "h space")
+	expected_names := utils.NewSetWithItems("d", "e", filepath.FromSlash("f/g"), "h space")
 	expected_pmap := map[string]string{
-		"d":       j("d"),
-		"e":       j("e"),
-		"f/g":     j("f/g"),
-		"h space": j("h space"),
+		"d":                       j("d"),
+		"e":                       j("e"),
+		filepath.FromSlash("f/g"): j("f/g"),
+		"h space":                 j("h space"),
 	}
 	names := utils.NewSet[string](16)
 	pmap := make(map[string]string, 16)

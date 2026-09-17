@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,6 +91,7 @@ func (n node) dir_entries() []fs.DirEntry {
 }
 
 func (n node) ReadFile(name string) ([]byte, error) {
+	name = strings.TrimPrefix(name, filepath.VolumeName(name))
 	if name == string(os.PathSeparator) {
 		return nil, fs.ErrNotExist
 	}
@@ -105,6 +107,7 @@ func (n node) ReadFile(name string) ([]byte, error) {
 }
 
 func (n node) ReadDir(name string) ([]fs.DirEntry, error) {
+	name = strings.TrimPrefix(name, filepath.VolumeName(name))
 	if name == string(os.PathSeparator) {
 		return n.dir_entries(), nil
 	}
@@ -170,7 +173,7 @@ func TestChooseFilesIgnore(t *testing.T) {
 		}
 		ci := CollectionIndex{}
 		actual := utils.Map(func(x ResultItem) string { return x.text }, s.Batch(&ci))
-		if diff := cmp.Diff(strings.Split(expected, ` `), actual); diff != "" {
+		if diff := cmp.Diff(utils.Map(filepath.FromSlash, strings.Split(expected, ` `)), actual); diff != "" {
 			t.Fatalf("Incorrect ignoring:\n%s", diff)
 		}
 	}
@@ -215,7 +218,7 @@ func TestChooseFilesScoring(t *testing.T) {
 		wg.Add(1)
 		s.Change_query(query)
 		wg.Wait()
-		if diff := cmp.Diff(expected, results()); diff != "" {
+		if diff := cmp.Diff(utils.Map(filepath.FromSlash, expected), results()); diff != "" {
 			t.Fatalf("Query less scoring failed\n%s", diff)
 		}
 	}
@@ -230,7 +233,7 @@ func TestChooseFilesScoring(t *testing.T) {
 		wg.Add(1)
 		s.Change_filter(*f)
 		wg.Wait()
-		if diff := cmp.Diff(expected, results()); diff != "" {
+		if diff := cmp.Diff(utils.Map(filepath.FromSlash, expected), results()); diff != "" {
 			t.Fatalf("filter %s failed\n%s", filter, diff)
 		}
 	}

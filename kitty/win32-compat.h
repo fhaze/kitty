@@ -41,12 +41,14 @@
 #ifndef O_NOCTTY
 #define O_NOCTTY 0
 #endif
+// Bits unused by the CRT _O_* flags, handled by openat() and masked before _open()
 #ifndef O_DIRECTORY
-#define O_DIRECTORY 0
+#define O_DIRECTORY 0x20000000
 #endif
 #ifndef O_NOFOLLOW
-#define O_NOFOLLOW 0
+#define O_NOFOLLOW 0x10000000
 #endif
+#define KITTY_WIN32_NON_CRT_OPEN_FLAGS (O_NONBLOCK | O_DIRECTORY | O_NOFOLLOW)
 #ifndef S_IRUSR
 #define S_IRUSR _S_IREAD
 #define S_IWUSR _S_IWRITE
@@ -54,8 +56,11 @@
 #ifndef S_ISSOCK
 #define S_ISSOCK(m) 0
 #endif
+#ifndef S_IFLNK
+#define S_IFLNK 0xA000
+#endif
 #ifndef S_ISLNK
-#define S_ISLNK(m) 0
+#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)
 #endif
 #ifndef EWOULDBLOCK
 #define EWOULDBLOCK EAGAIN
@@ -125,6 +130,8 @@ int mlock(const void *addr, size_t len);
 int munlock(const void *addr, size_t len);
 int shm_open(const char *name, int oflag, mode_t mode);
 int shm_unlink(const char *name);
+// unlink() that removes the name even while the file is open elsewhere
+int kitty_win32_unlink_posix(const char *path);
 
 // <dlfcn.h>
 #define RTLD_LAZY 0x1
@@ -151,7 +158,7 @@ int posix_memalign(void **memptr, size_t alignment, size_t size);
 int setenv(const char *name, const char *value, int overwrite);
 int unsetenv(const char *name);
 // resolved_path must be NULL or at least PATH_MAX bytes
-char* realpath(const char *path, char *resolved_path);
+char *realpath(const char *path, char *resolved_path);
 // GetModuleFileName() with backslashes converted to forward slashes
 bool win32_exe_path(char *buf, size_t buf_sz);
 // Re-runs the current executable with the specified argv as a detached process
@@ -164,12 +171,27 @@ bool kitty_win32_append_quoted_arg(char *buf, size_t buf_sz, size_t *pos, const 
 void set_errno_from_last_error(void);
 // Creates a connected pair of loopback TCP sockets (SOCKET handles)
 int kitty_win32_socketpair(uintptr_t out[2]);
+// Wraps a SOCKET handle (as returned by Python's socket.fileno()) in a CRT fd
+int kitty_win32_fd_from_socket_handle(intptr_t sock);
+bool kitty_win32_set_current_thread_name(const char *name);
+// Read-only open that permits the file to be concurrently deleted/renamed by
+// its creator, which CRT open() disallows
+int kitty_win32_open_readonly_shared(const char *path);
+// Read/write temp file that is deleted when its last handle is closed
+int kitty_win32_open_anonymous_tmpfile(void);
+// UTF-8 path of an open file or directory fd
+int kitty_win32_path_from_fd(int fd, char *buf, size_t bufsz);
+// Whether the file's owner SID is the current process token's user or default owner
+int kitty_win32_fd_owned_by_current_user(int fd, bool *owned);
+// Number of active Terminal Services sessions with a logged in user
+size_t kitty_win32_num_logged_in_users(void);
 // Called before a socket based fd is closed by close()
 extern void (*kitty_win32_on_fd_close)(int fd);
 
 // <sys/stat.h> extensions
 #define mkdir(path, mode) _mkdir(path)
-#define lstat stat
+int kitty_win32_lstat(const char *path, struct stat *st);
+#define lstat kitty_win32_lstat
 
 // <dirent.h>: MinGW dirent has no d_type
 #define DT_UNKNOWN 0
@@ -180,15 +202,22 @@ extern void (*kitty_win32_on_fd_close)(int fd);
 // <sys/socket.h>: sockets are wrapped in CRT file descriptors so they can be
 // used interchangeably with the fds returned by pipe2() and open().
 typedef int socklen_t;
-// pyconfig.h defines uid_t/gid_t as macros expanding to int
+// pyconfig.h defines uid_t/gid_t as macros expanding to int, match that so
+// translation units with and without Python.h agree on the type
 #ifndef uid_t
-typedef unsigned int uid_t;
+#define uid_t int
 #endif
 #ifndef gid_t
-typedef unsigned int gid_t;
+#define gid_t int
 #endif
-static inline uid_t geteuid(void) { return 0; }
-static inline gid_t getegid(void) { return 0; }
+static inline uid_t
+geteuid(void) {
+    return 0;
+}
+static inline gid_t
+getegid(void) {
+    return 0;
+}
 struct sockaddr;
 #ifndef SHUT_RD
 #define SHUT_RD 0
@@ -208,10 +237,13 @@ int kitty_win32_shutdown(int fd, int how);
 ssize_t kitty_win32_read(int fd, void *buf, size_t count);
 ssize_t kitty_win32_write(int fd, const void *buf, size_t count);
 int kitty_win32_close(int fd);
+// open() honoring O_DIRECTORY and (for read-only opens) O_NOFOLLOW
+int kitty_win32_open(const char *path, int flags, ...);
 #ifndef KITTY_WIN32_COMPAT_IMPL
 #define read(fd, buf, count) kitty_win32_read(fd, buf, count)
 #define write(fd, buf, count) kitty_win32_write(fd, buf, count)
 #define close(fd) kitty_win32_close(fd)
+#define open(...) kitty_win32_open(__VA_ARGS__)
 #define recv(fd, buf, len, flags) kitty_win32_recv(fd, buf, len, flags)
 #define send(fd, buf, len, flags) kitty_win32_send(fd, buf, len, flags)
 #define accept(fd, addr, addrlen) kitty_win32_accept(fd, addr, addrlen)
