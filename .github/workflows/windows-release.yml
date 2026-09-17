@@ -90,9 +90,10 @@ jobs:
             shell: cmd
             run: |
               cd windows-package\kitty\bin
-              kitty.exe --version || exit /b 1
+              rem kitty.exe is a GUI subsystem executable, cmd.exe only waits for it with start /wait
+              start "" /b /wait kitty.exe --version || exit /b 1
               kitten.exe --version || exit /b 1
-              kitty.exe +runpy "import ssl, sqlite3, kitty.fast_data_types" || exit /b 1
+              start "" /b /wait kitty.exe +runpy "import ssl, sqlite3, kitty.fast_data_types" || exit /b 1
 
           - name: Upload package artifact
             uses: actions/upload-artifact@v7.0.1

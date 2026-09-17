@@ -164,6 +164,11 @@ bool win32_exe_path(char *buf, size_t buf_sz);
 // Re-runs the current executable with the specified argv as a detached process
 // (no console, own process group), returns false on failure.
 bool win32_spawn_detached(char *const argv[]);
+// Attaches to the console of the parent process, if it has one, and binds any
+// of stdin/stdout/stderr that the parent did not redirect to it. Needed
+// because GUI subsystem executables do not inherit the parent's console.
+// Returns false if there is no console to attach to.
+bool win32_attach_parent_console(void);
 bool win32_add_dll_dir_of_module(const wchar_t *module_name);
 // Appends arg to buf at *pos quoted as per CommandLineToArgvW() rules,
 // returns false if buf is too small

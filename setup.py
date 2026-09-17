@@ -1739,6 +1739,9 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
     desc = f'Linking {emphasis("launcher")} ...'
     if is_windows:
         libs += ['-lws2_32', '-lshlwapi', '-lbcrypt', '-ladvapi32', '-lwtsapi32']
+        # GUI subsystem, otherwise Windows opens a console host (conhost or
+        # Windows Terminal) for kitty.exe when it is not started from a shell
+        ldflags.append('-mwindows')
     cmd = env.cc + ldflags + objects + libs + pylib + ['-o', dest]
     args.compilation_database.add_command(desc, cmd, partial(newer, dest, *objects), key=LinkKey('kitty' + exe_ext))
     if args.build_dsym and is_macos:

@@ -1472,6 +1472,31 @@ win32_spawn_detached(char *const argv[]) {
     CloseHandle(pi.hProcess);
     return true;
 }
+
+static HANDLE
+valid_std_handle(DWORD which) {
+    HANDLE h = GetStdHandle(which);
+    return (h == INVALID_HANDLE_VALUE) ? NULL : h;
+}
+
+bool
+win32_attach_parent_console(void) {
+    const DWORD ids[3] = {STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
+    HANDLE inherited[3];
+    for (int i = 0; i < 3; i++) inherited[i] = valid_std_handle(ids[i]);
+    if (!AttachConsole(ATTACH_PARENT_PROCESS)) return false;
+    // AttachConsole() points all three std handles at the console, keep the
+    // ones the parent explicitly redirected (pipes, files, its own console).
+    for (int i = 0; i < 3; i++) {
+        if (inherited[i]) SetStdHandle(ids[i], inherited[i]);
+    }
+    // The C runtime bound the std streams at startup, when the handles were
+    // missing, so re-open those that had nothing to bind to on the console.
+    if (!inherited[0]) freopen("CONIN$", "r", stdin);
+    if (!inherited[1]) freopen("CONOUT$", "w", stdout);
+    if (!inherited[2]) freopen("CONOUT$", "w", stderr);
+    return true;
+}
 // }}}
 
 // misc {{{
