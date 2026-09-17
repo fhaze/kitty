@@ -196,14 +196,6 @@ spawn(PyObject *self UNUSED, PyObject *args) {
 }
 #else
 static PyObject *
-set_blocking(PyObject *self UNUSED, PyObject *args) {
-    int fd, blocking;
-    if (!PyArg_ParseTuple(args, "ip", &fd, &blocking)) return NULL;
-    if (fcntl(fd, F_SETFL, blocking ? 0 : O_NONBLOCK) != 0) return PyErr_SetFromErrno(PyExc_OSError);
-    Py_RETURN_NONE;
-}
-
-static PyObject *
 spawn(PyObject *self UNUSED, PyObject *args) {
     PyObject *argv_p, *env_p, *handled_signals_p, *pass_fds;
     int master, slave, stdin_read_fd, stdin_write_fd, ready_read_fd, ready_write_fd, forward_stdio;

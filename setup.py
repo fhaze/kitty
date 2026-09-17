@@ -1778,9 +1778,7 @@ def bundle_windows_runtime(ddir: str, launcher_dir: str) -> None:
         return ans
 
     shutil.copytree(stdlib_src, stdlib_dest, ignore=stdlib_ignore)
-    compileall.compile_dir(
-        stdlib_dest, force=True, optimize=2, quiet=1, workers=0, invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH, ddir=''
-    )
+    compileall.compile_dir(stdlib_dest, force=True, optimize=2, quiet=1, workers=0, invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH, ddir='')
 
     # MSYS2 fontconfig looks for its configuration in <dir of DLL>/../etc/fonts
     fonts_conf_dest = os.path.join(ddir, 'etc', 'fonts')

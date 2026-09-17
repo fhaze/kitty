@@ -56,6 +56,12 @@ jobs:
                 mingw-w64-ucrt-x86_64-fontconfig
                 mingw-w64-ucrt-x86_64-mesa
 
+          - name: Install SIMDe headers (not packaged by MSYS2)
+            run: |
+              curl -fsSL -o simde.tar.gz https://github.com/simd-everywhere/simde/archive/refs/tags/v0.8.2.tar.gz
+              tar -xzf simde.tar.gz -C "$RUNNER_TEMP"
+              echo "CPPFLAGS=-I$(cygpath -m "$RUNNER_TEMP/simde-0.8.2")" >> "$GITHUB_ENV"
+
           - name: Install slang shader compiler
             run: |
               curl -fsSL -o slang.zip https://github.com/shader-slang/slang/releases/download/v2026.14.1/slang-2026.14.1-windows-x86_64.zip
