@@ -27,6 +27,13 @@ def compile_terminfo(base):
         os.makedirs(odir, exist_ok=True)
         ofile = os.path.join(odir, xterm_kitty)
         shutil.move(tfile, ofile)
+        # tic on case-insensitive filesystems (Windows, macOS) names the
+        # directory after the hex code of the first letter, but ncurses on
+        # Linux (including WSL distros) only looks under the letter itself.
+        if directory != xterm_kitty[0]:
+            xdir = os.path.join(base, xterm_kitty[0])
+            os.makedirs(xdir, exist_ok=True)
+            shutil.copy2(ofile, os.path.join(xdir, xterm_kitty))
     return ofile
 
 

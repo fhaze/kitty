@@ -94,6 +94,9 @@ jobs:
               start "" /b /wait kitty.exe --version || exit /b 1
               kitten.exe --version || exit /b 1
               start "" /b /wait kitty.exe +runpy "import ssl, sqlite3, kitty.fast_data_types" || exit /b 1
+              rem WSL distros look up the terminfo under x\ not the hex encoded 78\ that tic writes on Windows
+              if not exist ..\lib\kitty\terminfo\x\xterm-kitty exit /b 1
+              if not exist ..\lib\kitty\terminfo\78\xterm-kitty exit /b 1
 
           - name: Upload package artifact
             uses: actions/upload-artifact@v7.0.1
