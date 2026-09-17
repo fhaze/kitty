@@ -265,6 +265,17 @@ def listen_on(spec: str, robust_atexit: Atexit) -> tuple[int, str]:
     return s.fileno(), spec
 
 
+def create_dcs_channel(robust_atexit: Atexit) -> tuple[int, str, str]:
+    # ConPTY strips unknown DCS escape codes, so on Windows kittens send
+    # @kitty-* DCS messages over a loopback socket instead of the tty.
+    try:
+        fd, address = listen_on('tcp:127.0.0.1:0', robust_atexit)
+    except Exception as err:
+        log_error(f'Failed to create DCS channel socket with error: {err}')
+        return -1, '', ''
+    return fd, address, secrets.token_urlsafe(32)
+
+
 def data_for_at(w: Window | None, arg: str, add_wrap_markers: bool = False) -> str | None:
     if not w:
         return None
@@ -448,16 +459,10 @@ class Boss:
             self.allow_remote_control = 'n'
         self.listening_on: str = ''
         listen_fd = -1
-        # ConPTY strips unknown DCS escape codes, so on Windows kittens send
-        # @kitty-* DCS messages over a loopback socket instead of the tty.
         self.dcs_channel_address: str = ''
         self.dcs_channel_token: str = ''
         if is_windows and talk_fd < 0:
-            try:
-                talk_fd, self.dcs_channel_address = listen_on('tcp:127.0.0.1:0', self.atexit)
-                self.dcs_channel_token = secrets.token_urlsafe(32)
-            except Exception as err:
-                log_error(f'Failed to create DCS channel socket with error: {err}')
+            talk_fd, self.dcs_channel_address, self.dcs_channel_token = create_dcs_channel(self.atexit)
         if args.listen_on and self.allow_remote_control in ('y', 'socket', 'socket-only', 'password'):
             try:
                 listen_fd, self.listening_on = listen_on(args.listen_on, self.atexit)
