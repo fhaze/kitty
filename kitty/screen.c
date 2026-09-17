@@ -2018,6 +2018,7 @@ set_mode_from_const(Screen *self, unsigned int mode, bool val) {
             else if (!val && self->linebuf != self->main_linebuf) screen_toggle_screen_buffer(self, mode == ALTERNATE_SCREEN, mode == ALTERNATE_SCREEN);
             break;
         case 7727 << 5: log_error("Application escape mode is not supported, the extended keyboard protocol should be used instead"); break;
+        case 9001 << 5: break; // win32-input-mode, sent by ConPTY; we only speak VT input
         case PENDING_MODE << 5:
             if (!screen_pause_rendering(self, val, 0)) {
                 log_error("Pending mode change to already current mode (%d) requested. Either pending mode expired or there is an application bug.", val);
