@@ -55,7 +55,9 @@ func PrepareRootCmd(root *cli.Command) {
 	if RunningAsUI() {
 		root.CallbackOnError = func(cmd *cli.Command, err error, during_parsing bool, exit_code int) int {
 			cli.ShowError(err)
-			os.Stdout.WriteString("\x1bP@kitty-overlay-ready|\x1b\\")
+			if dcs, err := KittyDCS("overlay-ready", ""); err == nil && dcs != "" {
+				os.Stdout.WriteString(dcs)
+			}
 			HoldTillEnter(true)
 			return exit_code
 		}
@@ -69,7 +71,7 @@ func KittenOutputSerializer() func(any) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			return "\x1bP@kitty-kitten-result|" + base85.EncodeToString(data) + "\x1b\\", nil
+			return KittyDCS("kitten-result", base85.EncodeToString(data))
 		}
 	}
 	return func(what any) (string, error) {

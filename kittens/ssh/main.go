@@ -758,6 +758,12 @@ func run_ssh(ssh_args, server_args, found_extra_args []string, ssh_config_channe
 	cd.echo_on = term.WasEchoOnOriginally()
 	cd.host_opts, cd.literal_env = host_opts, literal_env
 	cd.request_data = need_to_request_data
+	if use_dcs_channel_proxy() {
+		// Win32-OpenSSH does not send terminal modes to the server so the remote
+		// pty echoes input, therefore have the remote bootstrap disable echo
+		// and request the data itself rather than pre-sending it.
+		cd.request_data = true
+	}
 	cd.hostname_for_match, cd.username = hostname_for_match, uname
 	escape_codes_to_set_colors, err := change_colors(cd.host_opts.Color_scheme)
 	if err == nil {
@@ -791,7 +797,31 @@ func run_ssh(ssh_args, server_args, found_extra_args []string, ssh_config_channe
 	cmd = append(cmd, cd.rcmd...)
 	c := exec.Command(cmd[0], cmd[1:]...)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	var stdout_proxy_done chan struct{}
+	var stdout_pipe_writer *os.File
+	if use_dcs_channel_proxy() {
+		// ConPTY does not deliver unknown DCS codes to kitty, so read ssh's
+		// output via a pipe, extract @kitty-* DCS codes and send them to kitty
+		// out-of-band, passing everything else on to the console.
+		var pr *os.File
+		pr, stdout_pipe_writer, err = os.Pipe()
+		if err != nil {
+			return 1, err
+		}
+		c.Stdout = stdout_pipe_writer
+		stdout_proxy_done = make(chan struct{})
+		go func() {
+			defer close(stdout_proxy_done)
+			f := new_dcs_filter(os.Stdout, forward_dcs_to_kitty)
+			_, _ = io.Copy(f, pr)
+			_ = f.Flush()
+			pr.Close()
+		}()
+	}
 	err = c.Start()
+	if stdout_pipe_writer != nil {
+		stdout_pipe_writer.Close()
+	}
 	if err != nil {
 		return 1, err
 	}
@@ -818,6 +848,9 @@ func run_ssh(ssh_args, server_args, found_extra_args []string, ssh_config_channe
 		// and we are waiting on that.
 	}()
 	err = c.Wait()
+	if stdout_proxy_done != nil {
+		<-stdout_proxy_done
+	}
 	drain_potential_tty_garbage(term)
 	if err != nil {
 		if exit_err, ok := errors.AsType[*exec.ExitError](err); ok {

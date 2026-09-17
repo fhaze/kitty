@@ -984,7 +984,16 @@ def generate_ssh_kitten_data() -> None:
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode='w') as tf:
             for f in sorted(files):
-                tf.add(f, filter=normalize)
+                if os.path.isfile(f) and not os.path.islink(f):
+                    # these scripts run on the remote host, so they must have
+                    # LF line endings even when checked out with autocrlf on Windows
+                    with open(f, 'rb') as src:
+                        data = src.read().replace(b'\r\n', b'\n')
+                    t = normalize(tf.gettarinfo(f))
+                    t.size = len(data)
+                    tf.addfile(t, io.BytesIO(data))
+                else:
+                    tf.add(f, filter=normalize)
         with open(dest, 'wb') as d:
             write_compressed_data(buf.getvalue(), d)
 

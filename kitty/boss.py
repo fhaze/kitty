@@ -6,11 +6,12 @@ import base64
 import json
 import os
 import re
+import secrets
 import socket
 import subprocess
 import sys
 from collections import deque
-from collections.abc import Callable, Container, Generator, Iterable, Iterator, Sequence
+from collections.abc import Callable, Container, Generator, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from functools import partial
@@ -447,6 +448,16 @@ class Boss:
             self.allow_remote_control = 'n'
         self.listening_on: str = ''
         listen_fd = -1
+        # ConPTY strips unknown DCS escape codes, so on Windows kittens send
+        # @kitty-* DCS messages over a loopback socket instead of the tty.
+        self.dcs_channel_address: str = ''
+        self.dcs_channel_token: str = ''
+        if is_windows and talk_fd < 0:
+            try:
+                talk_fd, self.dcs_channel_address = listen_on('tcp:127.0.0.1:0', self.atexit)
+                self.dcs_channel_token = secrets.token_urlsafe(32)
+            except Exception as err:
+                log_error(f'Failed to create DCS channel socket with error: {err}')
         if args.listen_on and self.allow_remote_control in ('y', 'socket', 'socket-only', 'password'):
             try:
                 listen_fd, self.listening_on = listen_on(args.listen_on, self.atexit)
@@ -992,6 +1003,23 @@ class Boss:
                 return None
             raise
 
+    def handle_dcs_channel_message(self, data: Mapping[str, Any]) -> None:
+        if not self.dcs_channel_token or not secrets.compare_digest(str(data.get('token', '')), self.dcs_channel_token):
+            log_error('Ignoring DCS channel message with invalid token')
+            return
+        try:
+            window_id = int(data['window_id'])
+            dcs = base64.standard_b64decode(data['dcs'])
+        except Exception as err:
+            log_error(f'Ignoring malformed DCS channel message with error: {err}')
+            return
+        w = self.window_id_map.get(window_id)
+        if w is None:
+            log_error(f'Ignoring DCS channel message for non-existent window: {window_id}')
+            return
+        if not w.handle_kitty_dcs(dcs):
+            log_error(f'Ignoring unknown DCS channel message: {dcs[:64]!r}')
+
     def peer_message_received(self, msg_bytes: bytes, peer_id: int, is_remote_control: bool) -> bytes | bool | None:
         if peer_id > 0 and msg_bytes == b'peer_death':
             self.peer_data_map.pop(peer_id, None)
@@ -1016,6 +1044,9 @@ class Boss:
             data: SingleInstanceData = json.loads(msg_bytes.decode('utf-8'))
         except Exception:
             log_error('Malformed command received over single instance socket, ignoring')
+            return None
+        if isinstance(data, dict) and data.get('cmd') == 'dcs':
+            self.handle_dcs_channel_message(data)
             return None
         if isinstance(data, dict) and data.get('cmd') == 'new_instance':
             if data['args'][0] == 'panel':
