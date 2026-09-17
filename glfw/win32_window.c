@@ -39,6 +39,8 @@
 #include <errno.h>
 
 static int getKeyMods(void);
+static void applyTitlebarTheme(_GLFWwindow *window, GLFWColorScheme scheme);
+static GLFWColorScheme query_system_color_theme(void);
 
 #define WM_KITTY_TIMER_CHECK (WM_APP + 1)
 #define WM_KITTY_DROP_DATA (WM_APP + 2)
@@ -1554,6 +1556,8 @@ createNativeWindow(_GLFWwindow *window, const _GLFWwndconfig *wndconfig, const _
 
     DragAcceptFiles(window->win32.handle, TRUE);
 
+    applyTitlebarTheme(window, query_system_color_theme());
+
     if (fbconfig->transparent) {
         updateFramebufferTransparency(window);
         window->win32.transparent = true;
@@ -2772,8 +2776,30 @@ glfwGetCurrentSystemColorTheme(bool query_if_unintialized UNUSED) {
     return query_system_color_theme();
 }
 
+// Ask DWM to draw the non-client area (title bar and borders) using the dark
+// theme when the user has selected the dark app mode in Windows settings
+static void
+applyTitlebarTheme(_GLFWwindow *window, GLFWColorScheme scheme) {
+    if (!window->win32.handle || !_glfw.win32.dwmapi.SetWindowAttribute) return;
+    DWORD attribute;
+    if (_glfwIsWindows10BuildOrGreaterWin32(18985)) attribute = DWMWA_USE_IMMERSIVE_DARK_MODE;
+    else if (_glfwIsWindows10BuildOrGreaterWin32(17763)) attribute = DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1;
+    else return;
+    BOOL dark = scheme == GLFW_COLOR_SCHEME_DARK;
+    if (FAILED(DwmSetWindowAttribute(window->win32.handle, attribute, &dark, sizeof(dark)))) return;
+    // Windows 10 does not repaint the frame of a visible window until its
+    // activation state changes, so nudge it
+    if (!_glfwIsWindows11OrGreaterWin32() && IsWindowVisible(window->win32.handle)) {
+        BOOL active = GetActiveWindow() == window->win32.handle;
+        SendMessageW(window->win32.handle, WM_NCACTIVATE, !active, 0);
+        SendMessageW(window->win32.handle, WM_NCACTIVATE, active, 0);
+    }
+}
+
 void
-_glfwPlatformInputColorScheme(GLFWColorScheme appearance UNUSED) {}
+_glfwPlatformInputColorScheme(GLFWColorScheme appearance) {
+    for (_GLFWwindow *window = _glfw.windowListHead; window; window = window->next) applyTitlebarTheme(window, appearance);
+}
 // }}}
 
 // Timers and main loop {{{
