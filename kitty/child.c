@@ -13,8 +13,14 @@
 #include <errno.h>
 #include <string.h>
 #include <signal.h>
+#ifndef _WIN32
 #include <sys/ioctl.h>
 #include <termios.h>
+#endif
+
+#ifdef _WIN32
+#include "win32-pty.h"
+#endif
 
 #define EXTRA_ENV_BUFFER_SIZE 64
 
@@ -78,6 +84,63 @@ wait_for_terminal_ready(int fd) {
     }
 }
 
+#ifdef _WIN32
+static PyObject *
+openpty(PyObject *self UNUSED, PyObject *args) {
+    unsigned short rows = 24, cols = 80;
+    if (!PyArg_ParseTuple(args, "|HH", &rows, &cols)) return NULL;
+    int master, slave;
+    if (!win32_pty_open(&master, &slave, rows, cols)) return PyErr_SetFromErrno(PyExc_OSError);
+    return Py_BuildValue("ii", master, slave);
+}
+
+static PyObject *
+spawn(PyObject *self UNUSED, PyObject *args) {
+    PyObject *argv_p, *env_p, *handled_signals_p, *pass_fds;
+    int master, slave, stdin_read_fd, stdin_write_fd, ready_read_fd, ready_write_fd, forward_stdio;
+    const char *kitten_exe;
+    char *cwd, *exe;
+    if (!PyArg_ParseTuple(
+            args,
+            "szO!O!iiiiiiO!spO!",
+            &exe,
+            &cwd,
+            &PyTuple_Type,
+            &argv_p,
+            &PyTuple_Type,
+            &env_p,
+            &master,
+            &slave,
+            &stdin_read_fd,
+            &stdin_write_fd,
+            &ready_read_fd,
+            &ready_write_fd,
+            &PyTuple_Type,
+            &handled_signals_p,
+            &kitten_exe,
+            &forward_stdio,
+            &PyTuple_Type,
+            &pass_fds))
+        return NULL;
+    // No fd passing, signal masks or stdio forwarding with ConPTY
+    (void)slave; (void)stdin_write_fd; (void)ready_write_fd; (void)handled_signals_p; (void)kitten_exe; (void)forward_stdio; (void)pass_fds;
+    char **argv = serialize_string_tuple(argv_p, 0);
+    if (!argv) return NULL;
+    char **env = serialize_string_tuple(env_p, 0);
+    if (!env) {
+        free(argv);
+        return NULL;
+    }
+    pid_t pid;
+    Py_BEGIN_ALLOW_THREADS;
+    pid = win32_pty_spawn(master, exe, cwd, argv, env, ready_read_fd, stdin_read_fd);
+    Py_END_ALLOW_THREADS;
+    free(argv);
+    free(env);
+    if (pid < 0) return PyErr_SetFromErrno(PyExc_OSError);
+    return PyLong_FromLong(pid);
+}
+#else
 static PyObject *
 spawn(PyObject *self UNUSED, PyObject *args) {
     PyObject *argv_p, *env_p, *handled_signals_p, *pass_fds;
@@ -251,14 +314,22 @@ spawn(PyObject *self UNUSED, PyObject *args) {
     if (PyErr_Occurred()) return NULL;
     return PyLong_FromLong(pid);
 }
+#endif
 
 static PyMethodDef module_methods[] = {
-    METHODB(spawn, METH_VARARGS), {NULL, NULL, 0, NULL} /* Sentinel */
+    METHODB(spawn, METH_VARARGS),
+#ifdef _WIN32
+    METHODB(openpty, METH_VARARGS),
+#endif
+    {NULL, NULL, 0, NULL} /* Sentinel */
 };
 
 
 bool
 init_child(PyObject *module) {
+#ifdef _WIN32
+    win32_pty_init();
+#endif
     PyModule_AddIntMacro(module, CLD_KILLED);
     PyModule_AddIntMacro(module, CLD_STOPPED);
     PyModule_AddIntMacro(module, CLD_EXITED);

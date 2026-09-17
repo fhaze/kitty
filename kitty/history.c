@@ -10,7 +10,9 @@
 #include "charsets.h"
 #include "resize.h"
 #include <structmember.h>
+#ifndef _WIN32
 #include <sys/mman.h>
+#endif
 #include "../3rdparty/ringbuf/ringbuf.h"
 
 extern PyTypeObject Line_Type;

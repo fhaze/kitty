@@ -1038,16 +1038,7 @@ glfwUpdateIMEState(GLFWwindow *handle, const GLFWIMEUpdateEvent *ev) {
     assert(window != NULL);
 
     _GLFW_REQUIRE_INIT();
-#if defined(_GLFW_X11) || defined(_GLFW_WAYLAND) || defined(_GLFW_COCOA)
     _glfwPlatformUpdateIMEState(window, ev);
-#else
-    (void)window;
-    (void)which;
-    (void)a;
-    (void)b;
-    (void)c;
-    (void)d;
-#endif
 }
 
 GLFWAPI GLFWmousebuttonfun

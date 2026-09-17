@@ -9,7 +9,9 @@
 #include "lineops.h"
 #include "fonts.h"
 #include <fontconfig/fontconfig.h>
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 #include "freetype_render_ui_text.h"
 #ifndef FC_COLOR
 #define FC_COLOR "color"
@@ -88,6 +90,10 @@ load_fontconfig_lib(void) {
     const char *libnames[] = {
 #if defined(_KITTY_FONTCONFIG_LIBRARY)
         _KITTY_FONTCONFIG_LIBRARY,
+#elif defined(_WIN32)
+        "libfontconfig-1.dll",
+        "libfontconfig.dll",
+        "fontconfig.dll",
 #else
         "libfontconfig.so",
         // some installs are missing the .so symlink, so try the full name

@@ -10,7 +10,9 @@
 #include "cleanup.h"
 #include "loop-utils.h"
 #include "threading.h"
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 
 #define FUNC(name, restype, ...)                 \
     typedef restype (*name##_func)(__VA_ARGS__); \
@@ -255,6 +257,11 @@ canberra_play_loop(void *x UNUSED) {
 
 void
 play_canberra_sound(const char *which_sound, const char *event_id, bool is_path, const char *media_role, const char *theme_name) {
+#ifdef _WIN32
+    (void)which_sound; (void)event_id; (void)is_path; (void)media_role; (void)theme_name;
+    kitty_win32_beep();
+    return;
+#endif
     load_libcanberra();
     if (libcanberra_handle == NULL || canberra_ctx == NULL) return;
     int ret;

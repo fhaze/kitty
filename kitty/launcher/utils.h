@@ -9,7 +9,11 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#ifdef _WIN32
+#include "../win32-compat.h"
+#else
 #include <pwd.h>
+#endif
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,10 +30,14 @@ static void
 ensure_home_path(void) {
     if (home) return;
     home = getenv("HOME");
+#ifdef _WIN32
+    if (!home || !home[0]) home = getenv("USERPROFILE");
+#else
     if (!home || !home[0]) {
         struct passwd *pw = getpwuid(geteuid());
         if (pw) home = pw->pw_dir;
     }
+#endif
     if (!home || !home[0]) {
         fprintf(stderr, "Fatal error: Cannot determine home directory\n");
         exit(1);
@@ -47,8 +55,12 @@ ensure_home_path(void) {
 
 static const char *
 home_path_for(const char *username) {
+#ifdef _WIN32
+    (void)username;
+#else
     struct passwd *pw = getpwnam(username);
     if (pw) return pw->pw_dir;
+#endif
     return NULL;
 }
 

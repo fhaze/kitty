@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # License: GPL v3 Copyright: 2016, Kovid Goyal <kovid at kovidgoyal.net>
 
-import fcntl
 import math
 import os
 import re
@@ -28,6 +27,7 @@ from .constants import (
     config_dir,
     is_macos,
     is_wayland,
+    is_windows,
     kitten_exe,
     runtime_dir,
     shell_path,
@@ -178,15 +178,20 @@ class ScreenSize(NamedTuple):
 
 
 def read_screen_size(fd: int = -1) -> ScreenSize:
-    import array
-    import fcntl
-    import termios
-
-    buf = array.array('H', [0, 0, 0, 0])
     if fd < 0:
         fd = sys.stdout.fileno()
-    fcntl.ioctl(fd, termios.TIOCGWINSZ, cast(bytearray, buf))
-    rows, cols, width, height = tuple(buf)
+    if is_windows:
+        # No pixel size information is available from the Windows console API
+        ts = os.get_terminal_size(fd)
+        rows, cols, width, height = ts.lines, ts.columns, 0, 0
+    else:
+        import array
+        import fcntl
+        import termios
+
+        buf = array.array('H', [0, 0, 0, 0])
+        fcntl.ioctl(fd, termios.TIOCGWINSZ, cast(bytearray, buf))
+        rows, cols, width, height = tuple(buf)
     cell_width, cell_height = width // (cols or 1), height // (rows or 1)
     return ScreenSize(rows, cols, width, height, cell_width, cell_height)
 
@@ -722,9 +727,12 @@ def resolved_shell(opts: Options | None = None) -> list[str]:
         if 'HOME' not in os.environ:
             env['HOME'] = os.path.expanduser('~')
         if 'USER' not in os.environ:
-            import pwd
+            if is_windows:
+                env['USER'] = os.environ.get('USERNAME', '')
+            else:
+                import pwd
 
-            env['USER'] = pwd.getpwuid(os.geteuid()).pw_name
+                env['USER'] = pwd.getpwuid(os.geteuid()).pw_name
 
         def expand(x: str) -> str:
             return expandvars(x, env)
@@ -1228,13 +1236,29 @@ def timed_debug_print(*a: Any, sep: str = ' ', end: str = '\n') -> None:
 def lock_file(f: IO[bytes] | IO[str]) -> None:
     if not f.writable():
         raise ValueError('Cannot lock files not opened in writable mode')
-    fcntl.lockf(f, fcntl.LOCK_EX)
+    if is_windows:
+        import msvcrt
+
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+    else:
+        import fcntl
+
+        fcntl.lockf(f, fcntl.LOCK_EX)
 
 
 def unlock_file(f: IO[bytes] | IO[str]) -> None:
     if not f.writable():
         raise ValueError('Cannot unlock files not opened in writable mode')
-    fcntl.lockf(f, fcntl.LOCK_UN)
+    if is_windows:
+        import msvcrt
+
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.lockf(f, fcntl.LOCK_UN)
 
 
 @contextmanager

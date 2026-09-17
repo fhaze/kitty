@@ -11,17 +11,23 @@
 #include "threading.h"
 #include "screen.h"
 #include "monotonic.h"
+#ifndef _WIN32
 #include <termios.h>
+#endif
 #include <unistd.h>
 #include <fcntl.h>
+#ifndef _WIN32
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#else
+#include "win32-pty.h"
+#endif
 #include <signal.h>
 extern PyTypeObject Screen_Type;
 
-#if defined(__APPLE__) || defined(__OpenBSD__)
+#if defined(__APPLE__) || defined(__OpenBSD__) || defined(_WIN32)
 #define NO_SIGQUEUE 1
 #endif
 
@@ -673,6 +679,15 @@ mark_for_close(ChildMonitor *self, PyObject *args) {
 
 static bool
 pty_resize(int fd, struct winsize *dim) {
+#ifdef _WIN32
+    if (!win32_pty_resize(fd, dim->ws_row, dim->ws_col)) {
+        if (errno != EBADF) {
+            log_error("Failed to resize pty associated with fd: %d with error: %s", fd, strerror(errno));
+            return false;
+        }
+    }
+    return true;
+#else
     while (true) {
         if (ioctl(fd, TIOCSWINSZ, dim) == -1) {
             if (errno == EINTR) continue;
@@ -684,6 +699,7 @@ pty_resize(int fd, struct winsize *dim) {
         break;
     }
     return true;
+#endif
 }
 
 static PyObject *
@@ -1619,6 +1635,9 @@ add_children(ChildMonitor *self) {
 
 static void
 hangup(pid_t pid) {
+#ifdef _WIN32
+    if (!win32_pty_signal_pid(pid, SIGHUP) && kill(pid, SIGHUP) != 0 && errno != ESRCH) perror("Failed to kill child");
+#else
     errno = 0;
     pid_t pgid = getpgid(pid);
     if (errno == ESRCH) return;
@@ -1629,6 +1648,7 @@ hangup(pid_t pid) {
     if (killpg(pgid, SIGHUP) != 0) {
         if (errno != ESRCH) perror("Failed to kill child");
     }
+#endif
 }
 
 
@@ -1739,6 +1759,22 @@ reap_children(ChildMonitor *self, bool enable_close_on_child_death) {
     int status;
     pid_t pid;
     (void)self;
+#ifdef _WIN32
+    // There is no waitpid(-1) on Windows, poll each tracked pid instead
+    children_mutex(lock);
+    size_t ntracked = 0;
+    pid_t tracked[MAX_CHILDREN + arraysz(monitored_pids)];
+    for (size_t i = 0; i < self->count && ntracked < arraysz(tracked); i++) tracked[ntracked++] = children[i].pid;
+    for (size_t i = 0; i < monitored_pids_count && ntracked < arraysz(tracked); i++) tracked[ntracked++] = monitored_pids[i];
+    children_mutex(unlock);
+    for (size_t i = 0; i < ntracked; i++) {
+        pid = waitpid(tracked[i], &status, WNOHANG);
+        if (pid > 0) {
+            if (enable_close_on_child_death) mark_child_for_removal(self, pid, status);
+            mark_monitored_pids(pid, status);
+        }
+    }
+#else
     while (true) {
         pid = waitpid(-1, &status, WNOHANG);
         if (pid == -1) {
@@ -1748,6 +1784,7 @@ reap_children(ChildMonitor *self, bool enable_close_on_child_death) {
             mark_monitored_pids(pid, status);
         } else break;
     }
+#endif
 }
 
 #ifdef KITTY_PRINT_BYTES_SENT_TO_CHILD
@@ -1977,7 +2014,15 @@ add_peer(int peer, bool is_remote_control_peer) {
 
 static bool
 getpeerid(int fd, uid_t *euid, gid_t *egid) {
-#ifdef __linux__
+#ifdef _WIN32
+    // Local sockets on Windows have no peer credentials, so peers are denied
+    // when uid verification is requested.
+    (void)fd;
+    (void)euid;
+    (void)egid;
+    errno = ENOTSUP;
+    return false;
+#elif defined(__linux__)
     struct ucred cr;
     socklen_t sz = sizeof(cr);
     if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cr, &sz) != 0) return false;

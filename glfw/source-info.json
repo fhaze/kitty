@@ -127,21 +127,21 @@
   "win32": {
     "headers": [
       "win32_platform.h",
-      "win32_joystick.h",
+      "null_joystick.h",
       "wgl_context.h",
       "egl_context.h",
       "osmesa_context.h"
     ],
     "sources": [
       "win32_init.c",
-      "win32_joystick.c",
+      "null_joystick.c",
       "win32_monitor.c",
-      "win32_time.c",
       "win32_thread.c",
       "win32_window.c",
       "wgl_context.c",
       "egl_context.c",
-      "osmesa_context.c"
+      "osmesa_context.c",
+      "momentum-scroll.c"
     ]
   },
   "x11": {

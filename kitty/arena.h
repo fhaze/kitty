@@ -40,9 +40,17 @@ typedef struct MA_TYPE_NAME {
     size_t allocated;
 } MA_TYPE_NAME;
 
+#define MA_USE_ALIGNED_ALLOC (MA_BLOCK_SIZE >= sizeof(void *) && MA_BLOCK_SIZE % sizeof(void *) == 0)
+
+static inline void
+MA_CAT(MA_NAME, _free_chunk)(void *chunk) {
+    if (MA_USE_ALIGNED_ALLOC) aligned_free(chunk);
+    else free(chunk);
+}
+
 static inline void
 MA_CAT(MA_NAME, _free_all)(MA_TYPE_NAME *self) {
-    for (size_t i = 0; i < self->count; i++) free(self->blocks[i].buf);
+    for (size_t i = 0; i < self->count; i++) MA_CAT(MA_NAME, _free_chunk)(self->blocks[i].buf);
     free(self->blocks);
     zero_at_ptr(self);
 }
@@ -55,7 +63,7 @@ MA_CAT(MA_NAME, _get)(MA_TYPE_NAME *self, size_t sz) {
         size_t count = self->count + 1;
         size_t block_sz = MAX(required_size, MA_ARENA_NUM_BLOCKS * MA_BLOCK_SIZE);
         void *chunk = NULL;
-        if (MA_BLOCK_SIZE >= sizeof(void *) && MA_BLOCK_SIZE % sizeof(void *) == 0) {
+        if (MA_USE_ALIGNED_ALLOC) {
             if (posix_memalign(&chunk, MA_BLOCK_SIZE, block_sz) != 0) chunk = NULL;
             else memset(chunk, 0, block_sz);
         } else chunk = calloc(1, block_sz);
@@ -64,7 +72,7 @@ MA_CAT(MA_NAME, _get)(MA_TYPE_NAME *self, size_t sz) {
             size_t capacity = MAX(8u, 2 * self->capacity);
             MA_BLOCK_TYPE_NAME *blocks = realloc(self->blocks, capacity * sizeof(MA_BLOCK_TYPE_NAME));
             if (!blocks) {
-                free(chunk);
+                MA_CAT(MA_NAME, _free_chunk)(chunk);
                 return NULL;
             }
             self->allocated += (capacity - self->capacity) * sizeof(MA_BLOCK_TYPE_NAME);
@@ -82,6 +90,7 @@ MA_CAT(MA_NAME, _get)(MA_TYPE_NAME *self, size_t sz) {
 
 #undef MA_NAME
 #undef MA_BLOCK_SIZE
+#undef MA_USE_ALIGNED_ALLOC
 #undef MA_ARENA_NUM_BLOCKS
 #undef MA_TYPE_NAME
 #undef MA_BLOCK_TYPE_NAME

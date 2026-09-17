@@ -11,12 +11,17 @@
 #error "Must include \"data-types.h\" before any system headers"
 #endif
 #define PY_SSIZE_T_CLEAN
+#ifdef _WIN32
+#include "win32-compat.h"
+#endif
 #include <Python.h>
 
 #include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
+#ifndef _WIN32
 #include <poll.h>
+#endif
 #include <pthread.h>
 #include <locale.h>
 #include "glfw-wrapper.h"
@@ -58,6 +63,10 @@
 #define str(s) #s
 #define arraysz(x) (sizeof(x) / sizeof(x[0]))
 #define zero_at_i(array, idx) memset((array) + (idx), 0, sizeof((array)[0]))
+#ifndef _WIN32
+// free memory allocated with posix_memalign()
+#define aligned_free free
+#endif
 #define zero_at_ptr(p) memset((p), 0, sizeof((p)[0]))
 #define literal_strlen(x) (sizeof(x) - 1)
 #define zero_at_ptr_count(p, count) memset((p), 0, (count) * sizeof((p)[0]))

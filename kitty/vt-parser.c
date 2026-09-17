@@ -1679,7 +1679,7 @@ free_vt_parser(Parser *self) {
         PS *s = (PS *)self->state;
         utf8_decoder_free(&s->utf8_decoder);
         pthread_mutex_destroy(&s->lock);
-        free(self->state);
+        aligned_free(self->state);
         self->state = NULL;
     }
     Py_TYPE(self)->tp_free((PyObject *)self);

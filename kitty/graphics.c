@@ -16,7 +16,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#ifndef _WIN32
 #include <sys/mman.h>
+#endif
 #include <stdlib.h>
 
 #include <zlib.h>
@@ -583,7 +585,7 @@ png_from_file_pointer(FILE *fp, const char *path_for_error_messages, uint8_t **d
 
 bool
 png_path_to_bitmap(const char *path, uint8_t **data, unsigned int *width, unsigned int *height, size_t *sz) {
-    FILE *fp = fopen(path, "r");
+    FILE *fp = fopen(path, "rb");
     if (fp == NULL) {
         log_error("The PNG image: %s could not be opened with error: %s", path, strerror(errno));
         return false;

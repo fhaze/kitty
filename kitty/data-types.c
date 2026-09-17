@@ -17,7 +17,9 @@
 #include "line.h"
 #include "charsets.h"
 #include "base64.h"
+#ifndef _WIN32
 #include <sys/socket.h>
+#endif
 #include <sys/types.h>
 #include <unistd.h>
 #include "cleanup.h"
@@ -26,7 +28,9 @@
 #include "wcswidth.h"
 #include "modes.h"
 #include <stddef.h>
+#ifndef _WIN32
 #include <termios.h>
+#endif
 #include <fcntl.h>
 #include <stdio.h>
 #include <locale.h>
@@ -355,6 +359,14 @@ pyset_iutf8(PyObject UNUSED *self, PyObject *args) {
 
 static bool
 put_tty_in_raw_mode(int fd, const struct termios *termios_p, bool read_with_timeout, int optional_actions) {
+#ifdef _WIN32
+    (void)optional_actions;
+    if (kitty_win32_console_raw_mode(fd, termios_p, read_with_timeout) != 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        return false;
+    }
+    return true;
+#else
     struct termios raw_termios = *termios_p;
     cfmakeraw(&raw_termios);
     if (read_with_timeout) {
@@ -369,6 +381,7 @@ put_tty_in_raw_mode(int fd, const struct termios *termios_p, bool read_with_time
         return false;
     }
     return true;
+#endif
 }
 
 static PyObject *
@@ -377,12 +390,20 @@ open_tty(PyObject *self UNUSED, PyObject *args) {
     if (!PyArg_ParseTuple(args, "|pi", &read_with_timeout, &optional_actions)) return NULL;
     int flags = O_RDWR | O_CLOEXEC | O_NOCTTY;
     if (!read_with_timeout) flags |= O_NONBLOCK;
+#ifdef _WIN32
+    int fd = kitty_win32_open_console(flags);
+    if (fd == -1) {
+        PyErr_Format(PyExc_OSError, "Failed to open console (CONIN$) with error: %s", strerror(errno));
+        return NULL;
+    }
+#else
     static char ctty[L_ctermid + 1];
     int fd = safe_open(ctermid(ctty), flags, 0);
     if (fd == -1) {
         PyErr_Format(PyExc_OSError, "Failed to open controlling terminal: %s (identified with ctermid()) with error: %s", ctty, strerror(errno));
         return NULL;
     }
+#endif
     struct termios *termios_p = calloc(1, sizeof(struct termios));
     if (!termios_p) return PyErr_NoMemory();
     if (tcgetattr(fd, termios_p) != 0) {
@@ -923,6 +944,9 @@ extern bool init_macos_process_info(PyObject *module);
 extern bool init_freetype_library(PyObject *);
 extern bool init_freetype_render_ui_text(PyObject *);
 #endif
+#ifdef _WIN32
+extern bool init_win32_process_info(PyObject *module);
+#endif
 
 static unsigned
 shift_to_first_set_bit(CellAttrs x) {
@@ -942,6 +966,9 @@ PyInit_fast_data_types(void) {
     PyObject *m;
     m = PyModule_Create(&module);
     if (m == NULL) return NULL;
+#ifdef _WIN32
+    win32_compat_init();
+#endif
     init_monotonic();
 
     if (!init_logging(m)) return NULL;
@@ -965,6 +992,9 @@ PyInit_fast_data_types(void) {
     if (!init_mouse(m)) return NULL;
     if (!init_kittens(m)) return NULL;
     if (!init_png_reader(m)) return NULL;
+#ifdef _WIN32
+    if (!init_win32_process_info(m)) return NULL;
+#endif
 #ifdef __APPLE__
     if (!init_macos_process_info(m)) return NULL;
     if (!init_CoreText(m)) return NULL;

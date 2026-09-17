@@ -10,8 +10,28 @@
 #include "../data-types.h"
 
 #include "launcher.h"
-#include "../safe-wrappers.h"
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdarg.h>
+
+void
+log_error(const char *fmt, ...) {
+    va_list ar;
+    va_start(ar, fmt);
+    vfprintf(stderr, fmt, ar);
+    va_end(ar);
+}
+
+#ifdef _WIN32
+// TODO: implement single instance mode on Windows using AF_UNIX sockets (afunix.h) or named pipes
+void
+single_instance_main(int argc, char *argv[], const CLIOptions *opts) {
+    (void)argv; (void)opts;
+    if (argc == -1) return;
+    log_error("Warning: --single-instance is not yet supported on Windows, starting a new instance\n");
+}
+#else
+#include "../safe-wrappers.h"
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -30,14 +50,6 @@
         perror(msg);       \
         do_exit(1);        \
     }
-
-void
-log_error(const char *fmt, ...) {
-    va_list ar;
-    va_start(ar, fmt);
-    vfprintf(stderr, fmt, ar);
-    va_end(ar);
-}
 
 typedef struct cleanup_data {
     int fd1, fd2;
@@ -400,3 +412,4 @@ single_instance_main(int argc, char *argv[], const CLIOptions *opts) {
         } else fail_on_errno("Failed to bind single instance socket");
     } else set_single_instance_socket(s);
 }
+#endif

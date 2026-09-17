@@ -3,7 +3,6 @@
 
 import os
 import sys
-import termios
 from collections import defaultdict
 from collections.abc import Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager, suppress
@@ -13,15 +12,44 @@ from typing import TYPE_CHECKING, Any, DefaultDict, Optional, TypedDict
 
 import kitty.fast_data_types as fast_data_types
 
-from .constants import handled_signals, is_freebsd, is_macos, kitten_exe, kitty_base_dir, shell_path, terminfo_dir
+from .constants import handled_signals, is_freebsd, is_macos, is_windows, kitten_exe, kitty_base_dir, shell_path, terminfo_dir
 from .types import run_once
 from .utils import cmdline_for_hold, log_error, resolved_shell, which
 
 if TYPE_CHECKING:
     from .window import CwdRequest
 
+if not is_windows:
+    import termios
 
-if is_macos:
+
+if is_windows:
+
+    def cmdline_of_pid(pid: int) -> list[str]:
+        return fast_data_types.cmdline_of_process(pid)
+
+    def cwd_of_process(pid: int) -> str:
+        return fast_data_types.cwd_of_process(pid)
+
+    def abspath_of_exe(pid: int) -> str:
+        return fast_data_types.abspath_of_process(pid)
+
+    def process_group_map() -> DefaultDict[int, list[int]]:
+        # Windows has no process groups in the POSIX sense, use the parent pid as the group
+        ans: DefaultDict[int, list[int]] = defaultdict(list)
+        for pid, ppid in fast_data_types.process_group_map():
+            ans[ppid].append(pid)
+        return ans
+
+    def _environ_of_process(pid: int) -> str:
+        raise OSError(f'Reading the environment of process {pid} is not supported on Windows')
+
+    def memory_used_by_process_tree_rooted_at(pid: int, check_if_cgroup_root: bool = False) -> int:
+        with suppress(Exception):
+            return fast_data_types.memory_of_process_tree(pid)
+        return -1
+
+elif is_macos:
     from kitty.fast_data_types import abspath_of_process as _abspath_of_process
     from kitty.fast_data_types import cmdline_of_process as cmdline_
     from kitty.fast_data_types import cwd_of_process as _cwd
@@ -296,6 +324,8 @@ def set_LANG_in_default_env(val: str) -> None:
 
 
 def openpty() -> tuple[int, int]:
+    if is_windows:
+        return fast_data_types.openpty()
     master, slave = os.openpty()  # Note that master and slave are in blocking mode
     os.set_inheritable(slave, True)
     os.set_inheritable(master, False)
@@ -444,7 +474,7 @@ class Child:
         else:
             stdin_read_fd = stdin_write_fd = -1
         self.final_env, must_run_startup_command_via_kitten = self.get_final_env()
-        self.initial_termios_state = termios.tcgetattr(master)
+        self.initial_termios_state = None if is_windows else termios.tcgetattr(master)
         argv = list(self.argv)
         cwd = self.cwd
         pass_fds = self.pass_fds
@@ -520,7 +550,7 @@ class Child:
         self.terminal_ready_fd = ready_write_fd
         if self.child_fd is not None:
             os.set_blocking(self.child_fd, False)
-        if not is_macos:
+        if not is_macos and not is_windows:
             ppid = getpid()
             try:
                 fast_data_types.systemd_move_pid_into_new_scope(pid, f'kitty-{ppid}-{self.id}.scope', f'kitty child process: {pid} launched by: {ppid}')
@@ -557,12 +587,20 @@ class Child:
             ans['cwd'] = cwd_of_process(pid) or None
         return ans
 
+    def _foreground_process_group(self) -> int:
+        assert self.child_fd is not None
+        if is_windows:
+            # ConPTY has no notion of a foreground process group, treat the
+            # direct child as the group leader
+            return self.pid if self.pid is not None else -1
+        return os.tcgetpgrp(self.child_fd)
+
     @property
     def foreground_processes(self) -> list[ProcessDesc]:
         if self.child_fd is None:
             return []
         try:
-            pgrp = os.tcgetpgrp(self.child_fd)
+            pgrp = self._foreground_process_group()
             foreground_processes = processes_in_group(pgrp) if pgrp >= 0 else []
             return [self.process_desc(x) for x in foreground_processes]
         except Exception:
@@ -573,7 +611,7 @@ class Child:
         if self.child_fd is None:
             return []
         try:
-            foreground_process_group_id = os.tcgetpgrp(self.child_fd)
+            foreground_process_group_id = self._foreground_process_group()
             if foreground_process_group_id < 0:
                 return []
             gmap = process_group_map()
@@ -623,7 +661,7 @@ class Child:
     def get_pid_for_cwd(self, oldest: bool = False) -> int | None:
         with suppress(Exception):
             assert self.child_fd is not None
-            pgrp = os.tcgetpgrp(self.child_fd)
+            pgrp = self._foreground_process_group()
             foreground_processes = processes_in_group(pgrp) if pgrp >= 0 else []
             if foreground_processes:
                 # there is no easy way that I know of to know which process is the
@@ -678,7 +716,8 @@ class Child:
     def send_signal_for_key(self, key_num: bytes) -> bool:
         import signal
 
-        if self.child_fd is None:
+        if self.child_fd is None or is_windows:
+            # ConPTY handles ^C itself by generating CTRL_C_EVENT for the console
             return False
         t = termios.tcgetattr(self.child_fd)
         if not t[3] & termios.ISIG:
@@ -696,7 +735,11 @@ class Child:
         os.killpg(pgrp, s)
         return True
 
-    def reset_termios_state(self, when: int = termios.TCSANOW) -> None:
+    def reset_termios_state(self, when: int = 0) -> None:
+        if is_windows:
+            return
+        if when == 0:
+            when = termios.TCSANOW
         if self.initial_termios_state is not None and self.child_fd is not None:
             try:
                 termios.tcsetattr(self.child_fd, when, self.initial_termios_state)

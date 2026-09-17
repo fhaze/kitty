@@ -188,7 +188,7 @@ test_find_either_of_two_bytes(PyObject *self UNUSED, PyObject *args) {
     memcpy(p, buf.buf, buf.len);
     memset(p + buf.len, '>', 64);
     const uint8_t *ans = func(p, buf.len, a, b);
-    free(abuf);
+    aligned_free(abuf);
     if (ans == NULL) return PyLong_FromLong(-1);
     unsigned long long n = ans - p;
     return PyLong_FromUnsignedLongLong(n);
@@ -244,7 +244,7 @@ test_xor64(PyObject *self UNUSED, PyObject *args) {
     for (int i = 0; i < 64; i++)
         if (p[i + buf.len] != '>') { PyErr_SetString(PyExc_SystemError, "xor wrote after end of data region"); }
     if (!PyErr_Occurred()) ans = PyBytes_FromStringAndSize((const char *)p, buf.len);
-    free(abuf);
+    aligned_free(abuf);
     return ans;
 }
 
@@ -324,7 +324,7 @@ test_blend_pixels(PyObject *self UNUSED, PyObject *args) {
             break;
         }
     if (!PyErr_Occurred()) ans = PyBytes_FromStringAndSize((const char *)p, dst.len);
-    free(abuf);
+    aligned_free(abuf);
     return ans;
 }
 

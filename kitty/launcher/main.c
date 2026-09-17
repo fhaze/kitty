@@ -9,6 +9,9 @@
 #include <Python.h>
 
 #include <libgen.h>
+#ifdef _WIN32
+#include <process.h>
+#endif
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #include <sys/syslimits.h>
@@ -175,6 +178,11 @@ run_embedded(RunData *run_data) {
     from_source = true;
 #endif
     PyStatus status;
+#ifdef _WIN32
+    wchar_t pydll[64];
+    swprintf(pydll, sizeof(pydll) / sizeof(pydll[0]), L"libpython%d.%d.dll", PY_MAJOR_VERSION, PY_MINOR_VERSION);
+    win32_add_dll_dir_of_module(pydll);
+#endif
     PyPreConfig preconfig;
     PyPreConfig_InitPythonConfig(&preconfig);
     preconfig.utf8_mode = 1;
@@ -231,6 +239,15 @@ read_exe_path(char *exe, size_t buf_sz) {
     }
     if (!safe_realpath(apple, exe, buf_sz)) {
         fprintf(stderr, "realpath() failed on the executable's path\n");
+        return false;
+    }
+    return true;
+}
+#elif defined(_WIN32)
+static bool
+read_exe_path(char *exe, size_t buf_sz) {
+    if (!win32_exe_path(exe, buf_sz)) {
+        fprintf(stderr, "Failed to get path to executable\n");
         return false;
     }
     return true;
@@ -355,7 +372,13 @@ exec_kitten(int argc, char *argv[], char *exe_dir) {
         exit(0);
     }
     errno = 0;
+#ifdef _WIN32
+    safe_snprintf(exe, PATH_MAX, "%s/kitten.exe", exe_dir);
+    intptr_t ret = _spawnv(_P_WAIT, exe, (const char *const *)argv);
+    if (ret != -1) exit((int)ret);
+#else
     execv(exe, argv);
+#endif
     fprintf(stderr, "Failed to execute kitten (%s) with error: %s\n", exe, strerror(errno));
     exit(1);
 }
@@ -436,6 +459,10 @@ handle_fast_commandline(CLISpec *cli_spec, const char *instance_group_prefix) {
     const char *ekfd = getenv("KITTY_EXEC_FOR_DETACH");
     bool is_exec_for_detach = ekfd && strcmp(getenv("KITTY_EXEC_FOR_DETACH"), pid_str) == 0;
     if (is_exec_for_detach) unsetenv("KITTY_EXEC_FOR_DETACH");
+#elif defined(_WIN32)
+    const char *ekfd = getenv("KITTY_EXEC_FOR_DETACH");
+    bool is_exec_for_detach = ekfd && strcmp(ekfd, "detached") == 0;
+    if (is_exec_for_detach) unsetenv("KITTY_EXEC_FOR_DETACH");
 #else
     bool is_exec_for_detach = false;
 #endif
@@ -447,6 +474,15 @@ handle_fast_commandline(CLISpec *cli_spec, const char *instance_group_prefix) {
             printf("session: %s\n", opts.session ? opts.session : "");
             exit(0);
         } else {
+#ifdef _WIN32
+            // No fork() on Windows, re-run ourselves as a detached process instead
+            setenv("KITTY_EXEC_FOR_DETACH", "detached", 1);
+            if (!win32_spawn_detached(cli_spec->original_argv)) {
+                fprintf(stderr, "Failed to spawn detached kitty process with error: %s\n", strerror(errno));
+                exit(1);
+            }
+            exit(0);
+#else
             int fds[2] = {0};
             if (pipe(fds) == -1) {
                 perror("failed to create a pipe");
@@ -497,6 +533,7 @@ handle_fast_commandline(CLISpec *cli_spec, const char *instance_group_prefix) {
             execv(exe_path, cli_spec->original_argv);
             fprintf(stderr, "Failed to execv() for --detach with exe_path: %s\n", exe_path);
             exit(1);
+#endif
 #endif
         }
     }

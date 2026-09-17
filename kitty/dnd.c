@@ -1072,7 +1072,11 @@ drop_send_dir_listing(Window *w, const char *path) {
     while ((de = readdir(dir)) != NULL) {
         if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
 
+#ifdef _WIN32
+        unsigned char dtype = DT_UNKNOWN;
+#else
         unsigned char dtype = de->d_type;
+#endif
         if (dtype == DT_UNKNOWN) {
             /* Fall back to lstat when d_type is unavailable */
             char full[PATH_MAX];
