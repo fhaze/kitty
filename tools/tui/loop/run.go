@@ -66,6 +66,12 @@ func (self *Loop) update_screen_size() error {
 	s := &self.screen_size
 	s.updated = true
 	s.HeightCells, s.WidthCells = uint(ws.Row), uint(ws.Col)
+	if ws.Xpixel == 0 || ws.Ypixel == 0 {
+		// Console APIs without pixel sizes (Windows): keep the cell size last
+		// reported by the terminal via in-band resize notifications
+		s.HeightPx, s.WidthPx = s.CellHeight*s.HeightCells, s.CellWidth*s.WidthCells
+		return nil
+	}
 	s.HeightPx, s.WidthPx = uint(ws.Ypixel), uint(ws.Xpixel)
 	s.CellWidth = s.WidthPx / s.WidthCells
 	s.CellHeight = s.HeightPx / s.HeightCells
