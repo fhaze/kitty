@@ -1735,6 +1735,29 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
         args.compilation_database.add_command(
             f'Compiling {emphasis(src)} ...', cmd, partial(newer, obj, src, *dependecies_for(src, obj, headers)), key=key, keyfile=src
         )
+    if is_windows:
+        resource_src = 'kitty/launcher/windows-icon.rc'
+        resource_icon = 'logo/kitty.ico'
+        resource_obj = os.path.join(build_dir, 'kitty-launcher-kitty-resource.o')
+        objects.append(resource_obj)
+        resource_compiler = shutil.which('windres')
+        if resource_compiler is None:
+            raise SystemExit('The command windres was not found. Install the MinGW-w64 binutils package.')
+        cmd = [
+            resource_compiler,
+            '--input-format=rc',
+            '--output-format=coff',
+            '--include-dir=.',
+            resource_src,
+            resource_obj,
+        ]
+        args.compilation_database.add_command(
+            f'Compiling {emphasis(resource_src)} ...',
+            cmd,
+            partial(newer, resource_obj, resource_src, resource_icon),
+            key=CompileKey(resource_src, os.path.basename(resource_obj)),
+            keyfile=resource_src,
+        )
     dest = kitty_exe = os.path.join(launcher_dir, 'kitty' + exe_ext)
     link_targets.append(os.path.abspath(dest))
     desc = f'Linking {emphasis("launcher")} ...'

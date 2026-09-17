@@ -5,6 +5,7 @@
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 from copy import deepcopy
@@ -113,6 +114,21 @@ def render(output: str, sz: int = 256) -> None:
     run('optipng', '-quiet', '-o7', '-strip', 'all', output)
 
 
+def create_windows_icon(source: str, output: str) -> None:
+    with open(source, 'rb') as f:
+        image = f.read()
+    if image[:8] != b'\x89PNG\r\n\x1a\n':
+        raise SystemExit(f'Not a PNG image: {source}')
+    width, height = struct.unpack_from('>II', image, 16)
+    if width != height or width > 256:
+        raise SystemExit(f'Windows icon must be a square PNG no larger than 256 pixels: {source}')
+    size = 0 if width == 256 else width
+    with open(output, 'wb') as f:
+        f.write(struct.pack('<HHH', 0, 1, 1))
+        f.write(struct.pack('<BBBBHHII', size, size, 0, 0, 1, 32, len(image), 22))
+        f.write(image)
+
+
 def main() -> None:
     if 'darwin' in sys.platform.lower():
         create_assets()
@@ -122,6 +138,7 @@ def main() -> None:
         run('ssh', 'ox', 'zsh', '-ilc', '~/bin/update-kitty && python3 ~/kitty-src/logo/make.py remote-macos')
         run('rsync', '-avz', '--include=*.icns', '--include=*.car', '--exclude=*', 'ox:~/kitty-src/logo/', base + '/')
     render(abspath('kitty.png'))
+    create_windows_icon(abspath('kitty.png'), abspath('kitty.ico'))
     render(abspath('kitty-128.png'), sz=128)
 
 
