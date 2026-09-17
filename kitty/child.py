@@ -351,6 +351,33 @@ def base64_terminfo_data() -> str:
     return (b'b64:' + fast_data_types.base64_encode(fast_data_types.terminfo_data(), True)).decode('ascii')
 
 
+# WSL only imports the Windows environment variables named in WSLENV, so the
+# variables programs use to detect kitty must be listed there explicitly.
+# The /p flag makes WSL translate the value as a filesystem path.
+wslenv_shared_vars: tuple[tuple[str, str], ...] = (
+    ('TERM', ''),
+    ('COLORTERM', ''),
+    ('KITTY_WINDOW_ID', ''),
+    ('KITTY_PID', ''),
+    ('KITTY_PUBLIC_KEY', ''),
+    ('KITTY_LISTEN_ON', ''),
+    ('KITTY_INSTALLATION_DIR', '/p'),
+    ('TERMINFO', '/p'),
+)
+
+
+def add_kitty_vars_to_wslenv(env: dict[str, str], terminfo_type: str = 'path') -> None:
+    entries = [x for x in env.get('WSLENV', '').split(':') if x]
+    already_shared = {x.partition('/')[0] for x in entries}
+    for name, flags in wslenv_shared_vars:
+        if name in env and name not in already_shared:
+            if name == 'TERMINFO' and terminfo_type != 'path':
+                flags = ''
+            entries.append(name + flags)
+    if entries:
+        env['WSLENV'] = ':'.join(entries)
+
+
 class ProcessDesc(TypedDict):
     cwd: str | None
     pid: int
@@ -446,6 +473,8 @@ class Child:
 
             modify_shell_environ(opts, env, self.argv)
         env = {k: v for k, v in env.items() if v is not DELETE_ENV_VAR}
+        if is_windows:
+            add_kitty_vars_to_wslenv(env, opts.terminfo_type)
         if self.is_clone_launch:
             env['KITTY_IS_CLONE_LAUNCH'] = self.is_clone_launch
             self.is_clone_launch = '1'  # free memory
