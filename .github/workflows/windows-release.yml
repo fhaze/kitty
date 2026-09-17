@@ -58,21 +58,26 @@ jobs:
 
           - name: Install SIMDe headers (not packaged by MSYS2)
             run: |
+              tmp=$(cygpath -u "$RUNNER_TEMP")
               curl -fsSL -o simde.tar.gz https://github.com/simd-everywhere/simde/archive/refs/tags/v0.8.2.tar.gz
-              tar -xzf simde.tar.gz -C "$RUNNER_TEMP"
-              echo "CPPFLAGS=-I$(cygpath -m "$RUNNER_TEMP/simde-0.8.2")" >> "$GITHUB_ENV"
+              tar -xzf simde.tar.gz -C "$tmp"
+              echo "CPPFLAGS=-I$(cygpath -m "$tmp/simde-0.8.2")" >> "$GITHUB_ENV"
 
           - name: Install slang shader compiler
             run: |
+              tmp=$(cygpath -u "$RUNNER_TEMP")
               curl -fsSL -o slang.zip https://github.com/shader-slang/slang/releases/download/v2026.14.1/slang-2026.14.1-windows-x86_64.zip
-              mkdir -p "$RUNNER_TEMP/slang" && unzip -qo slang.zip -d "$RUNNER_TEMP/slang"
-              echo "SLANGC=$(cygpath -m "$RUNNER_TEMP/slang/bin/slangc.exe")" >> "$GITHUB_ENV"
+              mkdir -p "$tmp/slang" && unzip -qo slang.zip -d "$tmp/slang"
+              echo "SLANGC=$(cygpath -m "$tmp/slang/bin/slangc.exe")" >> "$GITHUB_ENV"
 
           - name: Install Symbols Nerd Font Mono
             run: |
               curl -fsSL -o nerd.zip https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip
-              mkdir -p "$LOCALAPPDATA/Microsoft/Windows/Fonts"
-              unzip -qo -j nerd.zip SymbolsNerdFontMono-Regular.ttf -d "$LOCALAPPDATA/Microsoft/Windows/Fonts"
+              fontdir=$(cygpath -u "$LOCALAPPDATA")/Microsoft/Windows/Fonts
+              mkdir -p "$fontdir"
+              unzip -qo -j nerd.zip SymbolsNerdFontMono-Regular.ttf -d "$fontdir"
+              fc-cache -f >/dev/null
+              fc-list :postscriptname=SymbolsNFM | grep -q . || { echo 'Nerd font not visible to fontconfig'; exit 1; }
 
           - name: Build Windows package
             id: pkg

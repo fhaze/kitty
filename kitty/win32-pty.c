@@ -202,6 +202,7 @@ win32_pty_open(int *master_fd, int *slave_fd, unsigned short rows, unsigned shor
     *master_fd = *slave_fd = -1;
     HANDLE in_read = INVALID_HANDLE_VALUE, in_write = INVALID_HANDLE_VALUE, out_read = INVALID_HANDLE_VALUE, out_write = INVALID_HANDLE_VALUE;
     SOCKET s[2] = {INVALID_SOCKET, INVALID_SOCKET};
+    int saved_errno;
     Win32Pty *pty = calloc(1, sizeof(Win32Pty));
     if (!pty) {
         errno = ENOMEM;
@@ -283,8 +284,8 @@ win32_pty_open(int *master_fd, int *slave_fd, unsigned short rows, unsigned shor
     }
     pty_unref(pty); // the registry and the threads hold references
     return true;
-fail: {
-    int saved_errno = errno;
+fail:
+    saved_errno = errno;
     if (pty->hpc) close_pseudo_console(pty);
     if (in_read != INVALID_HANDLE_VALUE) CloseHandle(in_read);
     if (in_write != INVALID_HANDLE_VALUE) CloseHandle(in_write);
@@ -302,7 +303,6 @@ fail: {
     }
     pty_unref(pty);
     errno = saved_errno;
-}
     return false;
 }
 
