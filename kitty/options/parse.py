@@ -1602,6 +1602,14 @@ class Parser:
     def window_title_template(self, val: str, ans: dict[str, typing.Any]) -> None:
         ans['window_title_template'] = tab_title_template(val)
 
+    def windows_blur_mode(self, val: str, ans: dict[str, typing.Any]) -> None:
+        val = val.lower()
+        if val not in self.choices_for_windows_blur_mode:
+            raise ValueError(f"The value {val} is not a valid choice for windows_blur_mode")
+        ans["windows_blur_mode"] = val
+
+    choices_for_windows_blur_mode = frozenset(('blur', 'acrylic'))
+
     def x11_hide_window_decorations(self, val: str, ans: dict[str, typing.Any]) -> None:
         deprecated_hide_window_decorations_aliases('x11_hide_window_decorations', val, ans)
 

@@ -3553,6 +3553,28 @@ config is not supported.
 )
 
 opt(
+    'windows_blur_mode',
+    'blur',
+    choices=('blur', 'acrylic'),
+    ctype='windows_blur_mode',
+    long_text="""
+The type of blur used for :opt:`background_blur` on Windows.
+
+:code:`blur`
+    is a plain blur-behind effect provided by the Desktop Window Manager. It
+    remains active even when the window is not focused.
+
+:code:`acrylic`
+    is the heavier frosted-glass acrylic material. Note that Windows only
+    renders the acrylic backdrop while the window is focused, so transparency
+    is lost as soon as the window loses focus.
+
+Changing this option by reloading the config is not supported, it only
+applies to newly created OS windows.
+""",
+)
+
+opt(
     'wayland_enable_ime',
     'yes',
     option_type='to_bool',

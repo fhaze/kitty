@@ -245,6 +245,7 @@ typedef struct _GLFWwindowWin32 {
     bool keymenu;
     bool live_resize_in_progress;
     int blur_radius;
+    int blur_mode;
 
     // Cached size used to filter out duplicate events
     int width, height;

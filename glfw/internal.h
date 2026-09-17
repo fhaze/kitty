@@ -327,6 +327,9 @@ struct _GLFWwndconfig {
         char appId[256], windowTag[256];
         uint32_t bgcolor;
     } wl;
+    struct {
+        int blur_mode;
+    } win32;
 };
 
 // Context configuration

@@ -159,6 +159,7 @@ typedef struct Options {
     ShowHyperlinkTargets show_hyperlink_targets;
     UnderlineHyperlinks underline_hyperlinks;
     int background_blur;
+    int windows_blur_mode;
     long macos_titlebar_color;
     unsigned long wayland_titlebar_color;
     struct {
