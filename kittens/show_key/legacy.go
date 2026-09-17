@@ -7,11 +7,10 @@ import (
 	"fmt"
 	"github.com/kovidgoyal/kitty/tools/cli/markup"
 	"github.com/kovidgoyal/kitty/tools/tty"
+	"github.com/kovidgoyal/kitty/tools/utils"
 	"io"
 	"os"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 var _ = fmt.Print
@@ -68,7 +67,7 @@ func run_legacy_loop(opts *Options) (err error) {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			if !(errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EBUSY)) {
+			if !utils.IsTemporarySyscallError(err) {
 				return err
 			}
 		}

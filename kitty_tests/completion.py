@@ -88,6 +88,8 @@ def completion(self: TestCompletion, tdir: str):
         env = os.environ.copy()
         env['PATH'] = os.path.join(tdir, 'bin')
         env['HOME'] = os.path.join(tdir, 'sub')
+        if os.name == 'nt':
+            env['USERPROFILE'] = env['HOME']
         env['KITTY_CONFIG_DIRECTORY'] = os.path.join(tdir, 'sub')
         cp = subprocess.run([kitten(), '__complete__', 'json'], check=True, stdout=subprocess.PIPE, cwd=tdir, input=json.dumps(all_argv).encode(), env=env)
         self.assertEqual(cp.returncode, 0, f'kitten __complete__ failed with exit code: {cp.returncode}')
@@ -97,6 +99,9 @@ def completion(self: TestCompletion, tdir: str):
     add('kitty @ l', has_words('ls', 'last-used-layout', 'launch'))
     add('kitty @ set-o', has_words('set-os-window-title'))
 
+    # On Windows executables are identified by extension rather than mode bits
+    x = '.exe' if os.name == 'nt' else ''
+
     def make_file(path, mode=None):
         with open(os.path.join(tdir, path), mode='x') as f:
             if mode is not None:
@@ -104,24 +109,24 @@ def completion(self: TestCompletion, tdir: str):
 
     os.mkdir(os.path.join(tdir, 'bin'))
     os.mkdir(os.path.join(tdir, 'sub'))
-    make_file('bin/exe1', 0o700)
+    make_file(f'bin/exe1{x}', 0o700)
     make_file('bin/exe-not1')
-    make_file('exe2', 0o700)
+    make_file(f'exe2{x}', 0o700)
     make_file('exe-not2.jpeg')
-    make_file('sub/exe3', 0o700)
+    make_file(f'sub/exe3{x}', 0o700)
     make_file('sub/exe-not3.png')
     session_files = tuple(f'project.{ext}' for ext in sorted(SESSION_FILE_EXTENSIONS))
     for path in session_files:
         make_file(f'sub/{path}')
 
     add('kitty x', all_words())
-    add('kitty e', all_words('exe1', 'exe2'))
-    add('kitty ./', all_words('./bin/', './sub/', './exe2'))
-    add('kitty ./e', all_words('./exe2'))
+    add('kitty e', all_words(f'exe1{x}', f'exe2{x}'))
+    add('kitty ./', all_words('./bin/', './sub/', f'./exe2{x}'))
+    add('kitty ./e', all_words(f'./exe2{x}'))
     add('kitty ./s', all_words('./sub/'))
-    add('kitty ~', all_words('~/exe3'))
-    add('kitty ~/', all_words('~/exe3'))
-    add('kitty ~/e', all_words('~/exe3'))
+    add('kitty ~', all_words(f'~/exe3{x}'))
+    add('kitty ~/', all_words(f'~/exe3{x}'))
+    add('kitty ~/e', all_words(f'~/exe3{x}'))
 
     add('kitty @ goto-layout ', has_words('tall', 'fat'))
     add('kitty @ goto-layout spli', all_words('splits'))
@@ -141,7 +146,7 @@ def completion(self: TestCompletion, tdir: str):
     add('kitty --start-as ', all_words('minimized', 'maximized', 'fullscreen', 'normal', 'hidden'))
     add('kitty -1 ', does_not_have_words('@ls', '@'))
     add('kitty --directory ', all_words('bin/', 'sub/'))
-    add('kitty -1d ', all_words('exe1'))
+    add('kitty -1d ', all_words(f'exe1{x}'))
     add('kitty -1d', all_words('-1d'))
     add('kitty -o a', has_words('allow_remote_control='))
     add('kitty --listen-on ', all_words('unix:', 'tcp:'))
@@ -174,7 +179,7 @@ def completion(self: TestCompletion, tdir: str):
     add('kitty -1 bash --n', is_delegate(2, 'bash'))
     add('kitty @launch --type tab bash --n', is_delegate(4, 'bash'))
     add('kitty +kitten hyperlinked_grep --s', is_delegate(2, 'rg'))
-    add('kitty @launch e', all_words('exe1', 'exe2'))
+    add('kitty @launch e', all_words(f'exe1{x}', f'exe2{x}'))
 
     for cmd, tests, result in zip(all_cmds, all_tests, run_tool()):
         self.current_cmd = cmd

@@ -15,7 +15,9 @@
 #include <openssl/bio.h>
 #include <openssl/rand.h>
 #include <openssl/crypto.h>
+#ifndef _WIN32
 #include <sys/mman.h>
+#endif
 #include <structmember.h>
 
 #ifdef LIBRESSL_VERSION_NUMBER

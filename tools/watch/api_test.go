@@ -95,6 +95,9 @@ func TestGetParentDirs(t *testing.T) {
 			result := get_parent_dirs(tc.input)
 			sort.Strings(result)
 			sort.Strings(tc.expect)
+			for i, e := range tc.expect {
+				tc.expect[i] = filepath.FromSlash(e)
+			}
 			if tc.expect == nil {
 				if len(result) != 0 {
 					t.Fatalf("expected empty result, got %v", result)
@@ -168,6 +171,9 @@ func TestGetUniqueDirectories(t *testing.T) {
 			result := get_unique_directories(tc.input)
 			sort.Strings(result)
 			sort.Strings(tc.expect)
+			for i, e := range tc.expect {
+				tc.expect[i] = filepath.FromSlash(e)
+			}
 			if diff := cmp.Diff(tc.expect, result); diff != "" {
 				t.Fatalf("get_unique_directories mismatch (-want +got):\n%s", diff)
 			}

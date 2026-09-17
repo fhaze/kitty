@@ -407,7 +407,8 @@ class TestFileTransmission(BaseTest):
             ft.test_responses = []
             ft.handle_serialized_command(serialized_cmd(action='file', file_id='sl', name=sl, compression=compress))
             received = b''.join(x['data'] for x in ft.test_responses)
-            self.ae(received.decode('utf-8'), src)
+            # Windows normalizes symlink targets
+            self.ae(os.path.normpath(received.decode('utf-8')), os.path.normpath(src))
 
     def test_parse_ftc(self):
         def t(raw, *expected):

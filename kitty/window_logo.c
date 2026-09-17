@@ -8,7 +8,9 @@
 
 #include "state.h"
 #include "window_logo.h"
+#ifndef _WIN32
 #include <sys/mman.h>
+#endif
 
 typedef struct WindowLogoItem {
     WindowLogo wl;

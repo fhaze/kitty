@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # License: GPL v3 Copyright: 2016, Kovid Goyal <kovid at kovidgoyal.net>
 
-import fcntl
 import io
 import os
 import select
@@ -10,12 +9,15 @@ import shutil
 import signal
 import struct
 import sys
-import termios
 import time
 from contextlib import contextmanager, suppress
 from functools import wraps
-from pty import CHILD, STDIN_FILENO, STDOUT_FILENO, fork
 from unittest import TestCase
+
+if sys.platform != 'win32':
+    import fcntl
+    import termios
+    from pty import CHILD, STDIN_FILENO, STDOUT_FILENO, fork
 
 from kitty.config import finalize_keys, finalize_mouse_mappings
 from kitty.fast_data_types import TEXT_SIZE_CODE, Cursor, HistoryBuf, LineBuf, Screen, get_options, monotonic, set_options
@@ -286,6 +288,12 @@ class BaseTest(TestCase):
             shutil.rmtree(tdir)
         except FileNotFoundError as err:
             print('Failed to delete the directory:', tdir, 'with error:', err, file=sys.stderr)
+        except PermissionError as err:
+            # Windows refuses to delete files that are still mapped, such as
+            # font files held open by FreeType
+            if sys.platform != 'win32':
+                raise
+            print('Failed to delete the directory:', tdir, 'with error:', err, file=sys.stderr)
 
     def tearDown(self):
         set_options(None)
@@ -387,6 +395,8 @@ class PTY:
         log_data_flow=False,
     ):
         self.is_child = False
+        self.child_pid = 0
+        self.child_waited_for = False
         self.log_data_flow = log_data_flow
         if isinstance(argv, str):
             argv = shlex.split(argv)
@@ -398,6 +408,10 @@ class PTY:
             self.child_pid = 0
             self.initial_termios_state = termios.tcgetattr(self.master_fd)
         else:
+            if sys.platform == 'win32':
+                from unittest import SkipTest
+
+                raise SkipTest('Running programs in a PTY requires fork(), not available on Windows')
             self.child_pid, self.master_fd = fork()
             self.is_child = self.child_pid == CHILD
         self.child_waited_for = False

@@ -11,6 +11,7 @@ import os
 import secrets
 import stat
 import struct
+import sys
 from typing import Literal, cast
 
 from kitty.fast_data_types import SHM_NAME_MAX, shm_open, shm_unlink
@@ -164,6 +165,15 @@ class SharedMemory:
         """Ensure the shared memory object is owned by us and not accessible to
         any other user. Must be called when opening objects whose name comes
         from an untrusted source, as anyone can create an object of that name."""
+        if sys.platform == 'win32':
+            # No POSIX mode bits, so check the owner SID instead. The object is a
+            # file in the per-user %TEMP% directory whose inherited ACL limits
+            # access to its owner.
+            from kitty.fast_data_types import fd_owned_by_current_user
+
+            if not fd_owned_by_current_user(self._fd):
+                raise ValueError('Shared memory object is not owned by the current user')
+            return
         if self.stats.st_uid != os.geteuid() or self.stats.st_gid != os.getegid():
             raise ValueError(f'Incorrect owner on shared memory object: uid={self.stats.st_uid} gid={self.stats.st_gid}')
         mode = stat.S_IMODE(self.stats.st_mode)

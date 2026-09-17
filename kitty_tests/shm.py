@@ -4,6 +4,7 @@
 
 import os
 import subprocess
+import sys
 
 from kitty.constants import is_macos, kitten_exe
 from kitty.fast_data_types import shm_unlink
@@ -33,6 +34,11 @@ class SHMTest(BaseTest):
             self.skipTest('macOS does not support fchmod() for shm files')
         with SharedMemory(size=64, unlink_on_exit=True) as shm:
             shm.verify_owner_and_mode()
+            if sys.platform == 'win32':
+                # No POSIX mode bits on Windows, only ownership is verified
+                with SharedMemory(name=shm.name, readonly=True) as shm2:
+                    shm2.verify_owner_and_mode()
+                return
             for mode in (0o644, 0o400, 0o660):
                 os.fchmod(shm.fileno(), mode)
                 with SharedMemory(name=shm.name, readonly=True) as shm2:

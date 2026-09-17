@@ -2,7 +2,6 @@
 # License: GPL v3 Copyright: 2016, Kovid Goyal <kovid at kovidgoyal.net>
 
 import os
-import pwd
 import sys
 from collections.abc import Iterator
 from contextlib import suppress
@@ -27,6 +26,7 @@ str_version: str = '.'.join(map(str, version))
 _plat = sys.platform.lower()
 is_macos: bool = 'darwin' in _plat
 is_freebsd: bool = 'freebsd' in _plat
+is_windows: bool = _plat == 'win32'
 is_running_from_develop: bool = False
 RC_ENCRYPTION_PROTOCOL_VERSION = '1'
 website_base_url = 'https://sw.kovidgoyal.net/kitty/'
@@ -36,6 +36,7 @@ launched_by_launch_services = kitty_run_data.get('launched_by_launch_services', 
 is_quick_access_terminal_app = kitty_run_data.get('is_quick_access_terminal_app', False)
 unserialize_launch_flag = 'kitty-unserialize-data='
 _slangc: tuple[str, ...] = ()
+exe_suffix = '.exe' if is_windows else ''
 
 
 def slangc() -> tuple[str, ...]:
@@ -93,17 +94,17 @@ def kitty_exe() -> str:
         for candidate in filter(None, items):
             if candidate not in seen:
                 seen.add(candidate)
-                if os.access(os.path.join(candidate, 'kitty'), os.X_OK):
+                if os.access(os.path.join(candidate, 'kitty' + exe_suffix), os.X_OK):
                     rpath = candidate
                     break
         else:
             raise RuntimeError('kitty binary not found')
-    return os.path.join(rpath, 'kitty')
+    return os.path.join(rpath, 'kitty' + exe_suffix)
 
 
 @run_once
 def kitten_exe() -> str:
-    return os.path.join(os.path.dirname(kitty_exe()), 'kitten')
+    return os.path.join(os.path.dirname(kitty_exe()), 'kitten' + exe_suffix)
 
 
 def _get_config_dir() -> str:
@@ -153,15 +154,18 @@ def runtime_dir() -> str:
         candidate = user_cache_dir()
     elif 'XDG_RUNTIME_DIR' in os.environ:
         candidate = os.path.abspath(os.environ['XDG_RUNTIME_DIR'])
+    elif is_windows:
+        candidate = os.path.join(cache_dir(), 'run')
     else:
         candidate = f'/run/user/{os.geteuid()}'
         if not os.path.isdir(candidate) or not os.access(candidate, os.X_OK | os.W_OK | os.R_OK):
             candidate = os.path.join(cache_dir(), 'run')
     os.makedirs(candidate, exist_ok=True)
-    import stat
+    if not is_windows:
+        import stat
 
-    if stat.S_IMODE(os.stat(candidate).st_mode) != 0o700:
-        os.chmod(candidate, 0o700)
+        if stat.S_IMODE(os.stat(candidate).st_mode) != 0o700:
+            os.chmod(candidate, 0o700)
     return candidate
 
 
@@ -179,12 +183,17 @@ beam_cursor_data_file = os.path.join(kitty_base_dir, 'logo', 'beam-cursor.png')
 shell_integration_dir = os.path.join(kitty_base_dir, 'shell-integration')
 fonts_dir = os.path.join(kitty_base_dir, 'fonts')
 shaders_dir = os.path.join(kitty_base_dir, 'shaders')
-try:
-    shell_path = os.environ.get('SHELL') or pwd.getpwuid(os.geteuid()).pw_shell or '/bin/sh'
-except KeyError:
-    with suppress(Exception):
-        print('Failed to read login shell via getpwuid() for current user, falling back to /bin/sh', file=sys.stderr)
-    shell_path = '/bin/sh'
+if is_windows:
+    shell_path = os.environ.get('SHELL') or os.environ.get('COMSPEC') or 'cmd.exe'
+else:
+    import pwd
+
+    try:
+        shell_path = os.environ.get('SHELL') or pwd.getpwuid(os.geteuid()).pw_shell or '/bin/sh'
+    except KeyError:
+        with suppress(Exception):
+            print('Failed to read login shell via getpwuid() for current user, falling back to /bin/sh', file=sys.stderr)
+        shell_path = '/bin/sh'
 # Keep this short as it is limited to 103 bytes on macOS
 # https://github.com/ansible/ansible/issues/11536#issuecomment-153030743
 ssh_control_master_template = 'kssh-{kitty_pid}-{ssh_placeholder}'
@@ -216,7 +225,8 @@ standard_sound_names = {
 
 def glfw_path(module: str) -> str:
     prefix = 'kitty.' if getattr(sys, 'frozen', False) else ''
-    return os.path.join(extensions_dir, f'{prefix}glfw-{module}.so')
+    ext = 'dll' if is_windows else 'so'
+    return os.path.join(extensions_dir, f'{prefix}glfw-{module}.{ext}')
 
 
 def detect_if_wayland_ok() -> bool:
@@ -236,7 +246,7 @@ def detect_if_wayland_ok() -> bool:
 
 
 def is_wayland(opts: Optional['Options'] = None) -> bool:
-    if is_macos:
+    if is_macos or is_windows:
         return False
     if opts is None:
         return bool(getattr(is_wayland, 'ans'))

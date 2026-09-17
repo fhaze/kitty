@@ -170,7 +170,7 @@ func TestFindOverwrites_DirsNotReported(t *testing.T) {
 		t.Fatalf("find_overwrites: %v", err)
 	}
 	// Only the nested file should be reported, not "subdir".
-	if len(got) != 1 || got[0] != "subdir/file.txt" {
+	if len(got) != 1 || got[0] != filepath.FromSlash("subdir/file.txt") {
 		t.Errorf("expected [subdir/file.txt], got %v", got)
 	}
 }
@@ -223,7 +223,7 @@ func TestFindOverwrites_NestedTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find_overwrites: %v", err)
 	}
-	want := []string{"link", "sub/deep/file.txt", "sub/nested.txt", "top.txt"}
+	want := []string{"link", filepath.FromSlash("sub/deep/file.txt"), filepath.FromSlash("sub/nested.txt"), "top.txt"}
 	if got2 := sortedStrings(got); !equalStringSlices(got2, want) {
 		t.Errorf("find_overwrites: got %v, want %v", got2, want)
 	}
@@ -429,7 +429,7 @@ func TestRenameContents_SymlinksInSubdirMovedAsIs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readlink dst/sub/abslink: %v", err)
 	}
-	if target != "/absolute/path" {
+	if target != filepath.FromSlash("/absolute/path") {
 		t.Errorf("symlink target: got %q, want %q", target, "/absolute/path")
 	}
 }

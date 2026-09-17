@@ -856,7 +856,12 @@ get_nth_file_url(const char *uri_list, size_t uri_list_sz, int n, char **path_ou
         *error_out = "EINVAL";
         return false;
     }
-    *path_out = strdup(path);
+    const char *fs_path = path;
+#ifdef _WIN32
+    // file:///C:/foo -> C:/foo
+    if (isalpha((unsigned char)path[1]) && path[2] == ':' && (path[3] == '/' || path[3] == 0)) fs_path = path + 1;
+#endif
+    *path_out = strdup(fs_path);
     if (!*path_out) {
         *error_out = "ENOMEM";
         return false;
@@ -1072,7 +1077,11 @@ drop_send_dir_listing(Window *w, const char *path) {
     while ((de = readdir(dir)) != NULL) {
         if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
 
+#ifdef _WIN32
+        unsigned char dtype = DT_UNKNOWN;
+#else
         unsigned char dtype = de->d_type;
+#endif
         if (dtype == DT_UNKNOWN) {
             /* Fall back to lstat when d_type is unavailable */
             char full[PATH_MAX];
@@ -2081,6 +2090,9 @@ parse_errno_name(const uint8_t *data, size_t sz) {
 
 static int
 open_item_tmpfile(void) {
+#ifdef _WIN32
+    return kitty_win32_open_anonymous_tmpfile();
+#else
     int fd = -1;
 #ifdef O_TMPFILE
     fd = safe_open("/tmp", O_TMPFILE | O_CLOEXEC | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR);
@@ -2091,6 +2103,7 @@ open_item_tmpfile(void) {
         if (fd >= 0) unlink(name);
     }
     return fd;
+#endif
 }
 
 static int

@@ -14,7 +14,6 @@ import (
 	"sync"
 
 	"github.com/shirou/gopsutil/v4/process"
-	"golang.org/x/sys/unix"
 
 	"github.com/kovidgoyal/kitty/tools/config"
 	"github.com/kovidgoyal/kitty/tools/tty"
@@ -113,7 +112,7 @@ func ResolveShell(shell string) []string {
 		shell_cmd = []string{shell}
 	}
 	exe := utils.FindExe(shell_cmd[0])
-	if unix.Access(exe, unix.X_OK) != nil {
+	if utils.Access(exe, utils.X_OK) != nil {
 		shell_cmd = []string{"/bin/sh"}
 	}
 	return shell_cmd
@@ -197,7 +196,7 @@ func RunShell(shell_cmd []string, shell_integration_env_var_val, cwd string) (er
 	if cwd != "" {
 		_ = os.Chdir(cwd)
 	}
-	return unix.Exec(utils.FindExe(exe), shell_cmd, env)
+	return utils.Exec(utils.FindExe(exe), shell_cmd, env)
 }
 
 var debugprintln = tty.DebugPrintln
@@ -211,7 +210,7 @@ func RunCommandRestoringTerminalToSaneStateAfter(cmd []string) {
 	c.Stderr = os.Stderr
 	term, err := tty.OpenControllingTerm()
 	if err == nil {
-		var state_before unix.Termios
+		var state_before tty.Termios
 		if term.Tcgetattr(&state_before) == nil {
 			if _, err = term.WriteString(loop.SAVE_PRIVATE_MODE_VALUES); err != nil {
 				fmt.Fprintln(os.Stderr, "failed to write to controlling terminal with error:", err)
@@ -232,7 +231,7 @@ func RunCommandRestoringTerminalToSaneStateAfter(cmd []string) {
 	}
 	// Ignore SIGINT as the kernel tends to send it to us as well as the
 	// subprocess on Ctrl+C. We cant use signal.Ignore as it doesnt reset
-	// sigprocmask so subsequent unix.Exec will inherit blocked SIGINT
+	// sigprocmask so subsequent exec will inherit blocked SIGINT
 	ignore_sigint_channel := make(chan os.Signal, 512)
 	if err = c.Start(); err != nil {
 		fmt.Fprintln(os.Stderr, cmd[0], "failed to start with error:", err)

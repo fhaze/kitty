@@ -9,14 +9,13 @@ import re
 import selectors
 import signal
 import sys
-import termios
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 from enum import Enum, IntFlag, auto
 from functools import partial
 from typing import Any, NamedTuple
 
-from kitty.constants import is_macos
+from kitty.constants import is_macos, is_windows
 from kitty.fast_data_types import FILE_TRANSFER_CODE, close_tty, normal_tty, open_tty, parse_input_from_terminal, raw_tty
 from kitty.key_encoding import ALT, CTRL, SHIFT, backspace_key, decode_key_event, enter_key
 from kitty.typing_compat import ImageManagerType, KeyEventType, Protocol
@@ -24,6 +23,11 @@ from kitty.utils import ScreenSize, ScreenSizeGetter, screen_size_function, writ
 
 from .handler import Handler
 from .operations import MouseTracking, init_state, reset_state
+
+if is_windows:
+    TCSANOW, TCSADRAIN = 0, 1
+else:
+    from termios import TCSADRAIN, TCSANOW
 
 
 class BinaryWrite(Protocol):
@@ -62,7 +66,7 @@ ftc_code = str(FILE_TRANSFER_CODE)
 
 
 class TermManager:
-    def __init__(self, optional_actions: int = termios.TCSANOW, use_alternate_screen: bool = True, mouse_tracking: MouseTracking = MouseTracking.none) -> None:
+    def __init__(self, optional_actions: int = TCSANOW, use_alternate_screen: bool = True, mouse_tracking: MouseTracking = MouseTracking.none) -> None:
         self.extra_finalize: str | None = None
         self.optional_actions = optional_actions
         self.use_alternate_screen = use_alternate_screen
@@ -207,7 +211,7 @@ sanitize_bracketed_paste: str = '[\x03\x04\x0e\x0f\r\x07\x7f\x8d\x8e\x8f\x90\x9b
 
 
 class Loop:
-    def __init__(self, sanitize_bracketed_paste: str = sanitize_bracketed_paste, optional_actions: int = termios.TCSADRAIN):
+    def __init__(self, sanitize_bracketed_paste: str = sanitize_bracketed_paste, optional_actions: int = TCSADRAIN):
         if is_macos:
             # On macOS PTY devices are not supported by the KqueueSelector and
             # the PollSelector is broken, causes 100% CPU usage

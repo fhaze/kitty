@@ -1347,8 +1347,15 @@ dispatch_csi(PS *self) {
                 break;
             }
             switch (params[0]) {
+#ifdef _WIN32
+                case 8: break; // ConPTY echoes the new size as CSI 8 ; rows ; cols t after every resize
                 case 4:
-                case 8: REPORT_ERROR("Escape codes to resize text area are not supported"); break;
+#else
+                case 4:
+                case 8:
+#endif
+                    REPORT_ERROR("Escape codes to resize text area are not supported");
+                    break;
                 case 14:
                 case 16:
                 case 18: CALL_CSI_HANDLER2(screen_report_size, 0, 0); break;
@@ -1679,7 +1686,7 @@ free_vt_parser(Parser *self) {
         PS *s = (PS *)self->state;
         utf8_decoder_free(&s->utf8_decoder);
         pthread_mutex_destroy(&s->lock);
-        free(self->state);
+        aligned_free(self->state);
         self->state = NULL;
     }
     Py_TYPE(self)->tp_free((PyObject *)self);

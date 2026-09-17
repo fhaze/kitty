@@ -68,8 +68,14 @@ is_linux = 'linux' in _plat
 is_dragonflybsd = 'dragonfly' in _plat
 is_bsd = is_freebsd or is_netbsd or is_dragonflybsd or is_openbsd
 is_windows = sys.platform == 'win32'
+if is_windows and not sys.flags.utf8_mode:
+    # The build reads/writes source files assuming UTF-8, which is not the default encoding on Windows
+    os.environ['PYTHONUTF8'] = '1'
+    raise SystemExit(subprocess.call([sys.executable] + sys.argv))
 is_arm = platform.processor() == 'arm' or platform.machine() in ('arm64', 'aarch64')
-c_std = '' if is_openbsd else '-std=c11'
+c_std = '' if is_openbsd else ('-std=gnu11' if is_windows else '-std=c11')
+shared_lib_ext = '.pyd' if is_windows else '.so'
+exe_ext = '.exe' if is_windows else ''
 PKGCONFIG = os.environ.get('PKGCONFIG_EXE', 'pkg-config')
 link_targets: List[str] = []
 macos_universal_arches = ('arm64', 'x86_64') if is_arm else ('x86_64', 'arm64')
@@ -533,6 +539,16 @@ def get_binary_arch(path: str) -> BinaryArch:
         bits = {0xFEEDFACE: 32, 0xFEEDFACF: 64}[s]
         cpu_type &= 0xFF
         isa = {0x7: ISA.AMD64, 0xC: ISA.ARM64}[cpu_type]
+    elif sig[:2] == b'MZ':  # PE
+        (pe_offset,) = struct.unpack_from('<I', sig, 0x3C)
+        with open(path, 'rb') as f:
+            f.seek(pe_offset)
+            pe = f.read(6)
+        if pe[:4] != b'PE\0\0':
+            raise SystemExit(f'Invalid PE header in {path}')
+        (machine,) = struct.unpack_from('<H', pe, 4)
+        isa = {0x8664: ISA.AMD64, 0x14C: ISA.X86, 0xAA64: ISA.ARM64}.get(machine, ISA.Other)
+        bits = 32 if machine == 0x14C else 64
     else:
         raise SystemExit(f'Unknown binary format with signature: {sig[:4]!r}')
     return BinaryArch(bits=bits, isa=isa)
@@ -624,7 +640,7 @@ def init_env(
     if ccver >= (5, 0):
         df += ' -Og'
         float_conversion = '-Wfloat-conversion'
-    fortify_source = '' if sanitize and is_macos else '-D_FORTIFY_SOURCE=2'
+    fortify_source = '' if (sanitize and is_macos) or is_windows else '-D_FORTIFY_SOURCE=2'
     optimize = df if debug or sanitize else '-O3'
     sanitize_args = get_sanitize_args(cc, ccver) if sanitize else []
     cppflags_ = os.environ.get(
@@ -651,6 +667,12 @@ def init_env(
             f' -pipe -fvisibility=hidden {no_plt}'
         ),
     )
+    if is_windows:
+        # UCRT provides C99 compliant printf and friends when this is defined.
+        # Also target Windows 10+ so ConPTY and friends are available.
+        cppflags += ['-D__USE_MINGW_ANSI_STDIO=1', '-D_WIN32_WINNT=0x0A00', '-DWINVER=0x0A00', '-DUNICODE', '-D_UNICODE', '-DBASE64_STATIC_DEFINE']
+        # kitty relies on GCC bitfield packing for its many bitfield unions with static_assert()ed sizes
+        cflags_ += ' -mno-ms-bitfields'
     cflags = shlex.split(cflags_) + shlex.split(sysconfig.get_config_var('CCSHARED') or '')
     ldflags_ = os.environ.get('OVERRIDE_LDFLAGS', '-Wall ' + ' '.join(sanitize_args) + ('' if debug else ' -O3'))
     ldflags = shlex.split(ldflags_)
@@ -794,6 +816,10 @@ def kitty_env(args: Options) -> Env:
         # Apple deprecated OpenGL in Mojave (10.14) silence the endless
         # warnings about it
         cppflags.append('-DGL_SILENCE_DEPRECATION')
+    elif is_windows:
+        cflags.extend(pkg_config('cairo-ft', '--cflags-only-I'))
+        platform_libs = pkg_config('cairo-ft', '--libs')
+        platform_libs.extend('-lws2_32 -lbcrypt -lgdi32 -luser32 -lshell32 -ladvapi32 -lshlwapi -lole32 -luuid -ldwrite -lpsapi -lwtsapi32'.split())
     else:
         cflags.extend(pkg_config('cairo-fc', '--cflags-only-I'))
         platform_libs = []
@@ -801,12 +827,19 @@ def kitty_env(args: Options) -> Env:
     cflags.extend(pkg_config('harfbuzz', '--cflags-only-I'))
     platform_libs.extend(pkg_config('harfbuzz', '--libs'))
     pylib = get_python_flags(args, cflags)
-    gl_libs = ['-framework', 'OpenGL'] if is_macos else pkg_config('gl', '--libs')
+    if is_macos:
+        gl_libs = ['-framework', 'OpenGL']
+    elif is_windows:
+        gl_libs = ['-lopengl32']
+    else:
+        gl_libs = pkg_config('gl', '--libs')
     libpng = pkg_config('libpng', '--libs')
     lcms2 = pkg_config('lcms2', '--libs')
     ans.ldpaths += pylib + platform_libs + gl_libs + libpng + lcms2 + libcrypto_ldflags + xxhash[1]
     if is_macos:
         ans.ldpaths.extend('-framework Cocoa'.split())
+    elif is_windows:
+        pass
     elif not is_openbsd:
         ans.ldpaths += ['-lrt']
         if '-ldl' not in ans.ldpaths:
@@ -824,29 +857,14 @@ def define(x: str) -> str:
 def run_tool(cmd: Union[str, List[str]], desc: Optional[str] = None) -> None:
     if verbose:
         desc = None
-
-    if is_windows:
-        # On Windows, it's generally safer to pass a single string to Popen with shell=True
-        # for commands that might involve shell built-ins or complex paths.
-        if isinstance(cmd, list):
-            wcmd_to_execute = shlex.join(cmd)
-        else:
-            wcmd_to_execute = cmd
-        print(desc or wcmd_to_execute)
-        p = subprocess.Popen(wcmd_to_execute, shell=True)
-    else:
-        # On Unix-like systems, passing a list is generally preferred for security and clarity.
-        if isinstance(cmd, str):
-            cmd_to_execute = shlex.split(cmd)  # Split the string into a list of arguments
-        else:
-            cmd_to_execute = cmd
-        print(desc or ' '.join(cmd_to_execute))
-        p = subprocess.Popen(cmd_to_execute)
-
+    if isinstance(cmd, str):
+        cmd = shlex.split(cmd)
+    print(desc or ' '.join(cmd))
+    p = subprocess.Popen(cmd)
     ret = p.wait()
     if ret != 0:
         if desc:
-            print(wcmd_to_execute if is_windows else cmd_to_execute)  # Print the actual command that was executed
+            print(' '.join(cmd))
         raise SystemExit(ret)
 
 
@@ -1014,11 +1032,25 @@ def parallel_run(items: List[Command], verbose: bool = verbose) -> None:
         nonlocal failed
         if not workers:
             return
-        pid, s = os.wait()
-        compile_cmd, w = workers.pop(pid, (None, None))
+        if is_windows:
+            # No os.wait() on Windows, poll the workers instead
+            while True:
+                for pid, (_, proc) in workers.items():
+                    if proc is not None and proc.poll() is not None:
+                        break
+                else:
+                    time.sleep(0.01)
+                    continue
+                break
+            compile_cmd, w = workers.pop(pid)
+            failed_ = w is not None and w.returncode != 0
+        else:
+            pid, s = os.wait()
+            compile_cmd, w = workers.pop(pid, (None, None))
+            failed_ = (s & 0xFF) != 0 or ((s >> 8) & 0xFF) != 0
         if compile_cmd is None:
             return
-        if (s & 0xFF) != 0 or ((s >> 8) & 0xFF) != 0:
+        if failed_:
             if failed is None:
                 failed = compile_cmd
         elif compile_cmd.on_success is not None:
@@ -1074,10 +1106,16 @@ def add_builtin_fonts(args: Options) -> None:
                     if font_file:
                         break
         elif is_windows:
+            # environment variable names are case-insensitive on Windows but not in MSYS2 Python
+            env = {k.upper(): v for k, v in os.environ.items()}
+            localappdata = env.get('LOCALAPPDATA') or (os.path.join(env['USERPROFILE'], 'AppData', 'Local') if 'USERPROFILE' in env else '')
+            windir = env.get('WINDIR') or env.get('SYSTEMROOT') or r'C:\Windows'
             for candidate in (
-                os.path.expandvars(r'%userprofile%\AppData\Local\Microsoft\Windows\Fonts'),
-                os.path.expandvars(r'%windir%\Fonts'),
+                os.path.join(localappdata, 'Microsoft', 'Windows', 'Fonts') if localappdata else '',
+                os.path.join(windir, 'Fonts'),
             ):
+                if not candidate:
+                    continue
                 q = os.path.join(candidate, filename)
                 if os.path.exists(q):
                     font_file = q
@@ -1104,6 +1142,7 @@ def compile_c_extension(
     headers: List[str],
     desc_prefix: str = '',
     build_dsym: bool = False,
+    ext: str = shared_lib_ext,
 ) -> None:
     prefix = os.path.basename(module)
     objects = [os.path.join(build_dir, f'{prefix}-{src.replace("/", "-")}.o') for src in sources]
@@ -1120,8 +1159,8 @@ def compile_c_extension(
         key = CompileKey(original_src, os.path.basename(dest))
         desc = f'Compiling {emphasis(desc_prefix + src)} ...'
         compilation_database.add_command(desc, cmd, partial(newer, dest, *dependecies_for(src, dest, headers)), key=key, keyfile=src)
-    dest = os.path.join(build_dir, f'{module}.so')
-    real_dest = f'{module}.so'
+    dest = os.path.join(build_dir, f'{module}{ext}')
+    real_dest = f'{module}{ext}'
     link_targets.append(os.path.abspath(real_dest))
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     desc = f'Linking {emphasis(desc_prefix + module)} ...'
@@ -1133,9 +1172,9 @@ def compile_c_extension(
     cmd = kenv.cc + linker_cflags + kenv.ldflags + objects + kenv.ldpaths + ['-o', dest]
 
     def on_success() -> None:
-        os.rename(dest, real_dest)
+        os.replace(dest, real_dest)
 
-    compilation_database.add_command(desc, cmd, partial(newer, real_dest, *objects), on_success=on_success, key=LinkKey(f'{module}.so'))
+    compilation_database.add_command(desc, cmd, partial(newer, real_dest, *objects), on_success=on_success, key=LinkKey(f'{module}{ext}'))
     if is_macos and build_dsym:
         real_dest = os.path.abspath(real_dest)
         desc = f'Linking dSYM {emphasis(desc_prefix + module)} ...'
@@ -1146,9 +1185,15 @@ def compile_c_extension(
 def find_c_files() -> Tuple[List[str], List[str]]:
     ans, headers = [], []
     d = 'kitty'
-    exclude = (
-        {'fontconfig.c', 'freetype.c', 'desktop.c', 'freetype_render_ui_text.c'} if is_macos else {'core_text.m', 'cocoa_window.m', 'macos_process_info.c'}
-    )
+    if is_macos:
+        exclude = {'fontconfig.c', 'freetype.c', 'desktop.c', 'freetype_render_ui_text.c'}
+    elif is_windows:
+        # fontconfig (from MSYS2) is used for font discovery on Windows until a DirectWrite backend exists
+        exclude = {'core_text.m', 'cocoa_window.m', 'macos_process_info.c'}
+    else:
+        exclude = {'core_text.m', 'cocoa_window.m', 'macos_process_info.c'}
+    if not is_windows:
+        exclude |= {'win32-compat.c', 'win32-pty.c', 'win32_process_info.c'}
     for x in sorted(os.listdir(d)):
         ext = os.path.splitext(x)[1]
         if ext in ('.c', '.m') and os.path.basename(x) not in exclude:
@@ -1181,7 +1226,8 @@ def glfw_init_env(
     module: str = 'x11',
 ) -> Env:
     ans = env.copy()
-    ans.cflags.append('-fPIC')
+    if not is_windows:
+        ans.cflags.append('-fPIC')
     ans.cppflags.append(f'-D_GLFW_{module.upper()}')
     ans.cppflags.append('-D_GLFW_BUILD_DLL')
 
@@ -1215,6 +1261,9 @@ def glfw_init_env(
         ans.cppflags.append('-DGL_SILENCE_DEPRECATION')
         for f_ in 'Cocoa IOKit CoreFoundation CoreVideo UniformTypeIdentifiers'.split():
             ans.ldpaths.extend(('-framework', f_))
+
+    elif module == 'win32':
+        ans.ldpaths.extend('-lgdi32 -luser32 -lshell32 -lole32 -luuid -limm32 -lopengl32 -ldwmapi -lshcore -lwinmm -lxinput'.split())
 
     elif module == 'wayland':
         at_least_version('wayland-protocols', *sinfo['wayland_protocols'])
@@ -1269,7 +1318,12 @@ def build_wayland_protocols(
 
 
 def compile_glfw(compilation_database: CompilationDatabase, build_dsym: bool = False) -> None:
-    modules = 'cocoa' if is_macos else 'x11 wayland'
+    if is_macos:
+        modules = 'cocoa'
+    elif is_windows:
+        modules = 'win32'
+    else:
+        modules = 'x11 wayland'
     for module in modules.split():
         try:
             genv = glfw_init_env(env, pkg_config, pkg_version, at_least_version, test_compile, module)
@@ -1288,7 +1342,16 @@ def compile_glfw(compilation_database: CompilationDatabase, build_dsym: bool = F
                 print(err, file=sys.stderr)
                 print(error('Disabling building of wayland backend'), file=sys.stderr)
                 continue
-        compile_c_extension(genv, f'kitty/glfw-{module}', compilation_database, sources, all_headers, desc_prefix=f'[{module}] ', build_dsym=build_dsym)
+        compile_c_extension(
+            genv,
+            f'kitty/glfw-{module}',
+            compilation_database,
+            sources,
+            all_headers,
+            desc_prefix=f'[{module}] ',
+            build_dsym=build_dsym,
+            ext='.dll' if is_windows else '.so',
+        )
 
 
 def kittens_env(args: Options) -> Env:
@@ -1523,6 +1586,8 @@ def build_static_kittens(
     dest = os.path.join(destination_dir or launcher_dir, 'kitten')
     if for_platform:
         dest += f'-{for_platform[0]}-{for_platform[1]}'
+    elif is_windows:
+        dest += '.exe'
     src = os.path.abspath('tools/cmd')
 
     def run_one(dest: str) -> None:
@@ -1655,7 +1720,10 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
     objects = []
     headers = glob.glob('kitty/launcher/*.h')
     cppflags.append('-DKITTY_VERSION="' + '.'.join(map(str, version)) + '"')
-    for src in ('kitty/launcher/main.c', 'kitty/launcher/single-instance.c', 'kitty/launcher/cmdline.c'):
+    launcher_sources = ['kitty/launcher/main.c', 'kitty/launcher/single-instance.c', 'kitty/launcher/cmdline.c']
+    if is_windows:
+        launcher_sources.append('kitty/win32-compat.c')
+    for src in launcher_sources:
         obj = os.path.join(build_dir, src.replace('/', '-').replace('.c', '.o'))
         objects.append(obj)
         cmd = env.cc + cppflags + cflags + ['-c', src, '-o', obj]
@@ -1663,11 +1731,13 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
         args.compilation_database.add_command(
             f'Compiling {emphasis(src)} ...', cmd, partial(newer, obj, src, *dependecies_for(src, obj, headers)), key=key, keyfile=src
         )
-    dest = kitty_exe = os.path.join(launcher_dir, 'kitty')
+    dest = kitty_exe = os.path.join(launcher_dir, 'kitty' + exe_ext)
     link_targets.append(os.path.abspath(dest))
     desc = f'Linking {emphasis("launcher")} ...'
+    if is_windows:
+        libs += ['-lws2_32', '-lshlwapi', '-lbcrypt', '-ladvapi32', '-lwtsapi32']
     cmd = env.cc + ldflags + objects + libs + pylib + ['-o', dest]
-    args.compilation_database.add_command(desc, cmd, partial(newer, dest, *objects), key=LinkKey('kitty'))
+    args.compilation_database.add_command(desc, cmd, partial(newer, dest, *objects), key=LinkKey('kitty' + exe_ext))
     if args.build_dsym and is_macos:
         desc = f'Linking dSYM {emphasis("launcher")} ...'
         dsym = f'{dest}.dSYM/Contents/Resources/DWARF/{os.path.basename(dest)}'
@@ -2523,6 +2593,9 @@ def do_build(args: Options) -> None:
 
 def main() -> None:
     check_version_info()
+    if is_windows and not sys.flags.utf8_mode:
+        # The build scripts read and write UTF-8 files, which fails with the default cp1252 encoding on Windows
+        raise SystemExit(subprocess.run([sys.executable, '-X', 'utf8'] + sys.argv).returncode)
     global verbose, build_dir
     if len(sys.argv) > 1 and sys.argv[1] == 'build-dep':
         return build_dep()

@@ -7,8 +7,10 @@
 #pragma once
 #include "data-types.h"
 #include <fcntl.h>
+#ifndef _WIN32
 #include <sys/mman.h>
 #include <sys/socket.h>
+#endif
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>

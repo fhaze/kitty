@@ -254,7 +254,16 @@ read_STAT_font_table(const uint8_t *table, size_t table_len, PyObject *name_look
         p = (uint16_t *)(pos + 4);
         uint16_t name_id = next, ordering = next;
         PyObject *rec = Py_BuildValue(
-            "{ss# sN sH sN}", "tag", (char *)pos, 4, "name", get_best_name(name_lookup_table, name_id), "ordering", ordering, "values", PyList_New(0));
+            "{ss# sN sH sN}",
+            "tag",
+            (char *)pos,
+            (Py_ssize_t)4,
+            "name",
+            get_best_name(name_lookup_table, name_id),
+            "ordering",
+            ordering,
+            "values",
+            PyList_New(0));
         if (!rec) return false;
         PyTuple_SET_ITEM(design_axes, count, rec);
     }

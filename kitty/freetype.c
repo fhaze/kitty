@@ -819,7 +819,7 @@ static void
 free_cairo_surface_data(Face *self) {
     if (self->cairo.cr) cairo_destroy(self->cairo.cr);
     if (self->cairo.surface) cairo_surface_destroy(self->cairo.surface);
-    if (self->cairo.buf) free(self->cairo.buf);
+    if (self->cairo.buf) aligned_free(self->cairo.buf);
 }
 
 static void

@@ -3,6 +3,7 @@
 
 import os
 import random
+import sys
 import tempfile
 import time
 import unittest
@@ -23,6 +24,17 @@ png_data = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQV
 
 
 def num_open_fds():
+    if sys.platform == 'win32':
+        # Count CRT file descriptors, the process handle count is too noisy
+        # as it includes threads, events, heaps, etc.
+        def is_open(fd):
+            try:
+                os.fstat(fd)
+            except OSError:
+                return False
+            return True
+
+        return sum(map(is_open, range(8192)))
     with suppress(OSError):
         return len(os.listdir('/proc/self/fd'))
     return len(os.listdir('/dev/fd'))
@@ -538,9 +550,12 @@ class TestGraphics(BaseTest):
 
         # Only regular files may be read
         with tempfile.TemporaryDirectory(prefix='tty-graphics-protocol-') as tdir:
-            fifo = os.path.join(tdir, 'fifo')
-            os.mkfifo(fifo)
-            self.ae(pl(fifo, s=1024, v=8, t='f'), generic_error, 'Reading from a FIFO was not refused')
+            non_regular_files = []
+            if hasattr(os, 'mkfifo'):
+                fifo = os.path.join(tdir, 'fifo')
+                os.mkfifo(fifo)
+                self.ae(pl(fifo, s=1024, v=8, t='f'), generic_error, 'Reading from a FIFO was not refused')
+                non_regular_files.append(fifo)
 
             # Neither the existence nor the type of a file may be leaked, so a
             # non-existent file, a directory and a file that is too small must
@@ -553,7 +568,7 @@ class TestGraphics(BaseTest):
 
             # Failing to read a file must not leak the file descriptor opened
             # for it, else a client can exhaust the process wide fd limit
-            paths = (small, tdir, os.path.join(tdir, 'does-not-exist'), fifo)
+            paths = (small, tdir, os.path.join(tdir, 'does-not-exist'), *non_regular_files)
             for path in paths:
                 pl(path, s=1024, v=8, t='f')  # warm up any lazily opened fds
             before = num_open_fds()

@@ -9,7 +9,9 @@
 #include "dnd.h"
 #include "options/to-c-generated.h"
 #include <math.h>
+#ifndef _WIN32
 #include <sys/mman.h>
+#endif
 
 GlobalState global_state = {{0}};
 

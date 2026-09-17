@@ -11,7 +11,9 @@
 #include "fast-file-copy.h"
 #if __linux__
 #define HAS_SENDFILE
+#ifndef _WIN32
 #include <sys/sendfile.h>
+#endif
 #include <unistd.h>
 #endif
 

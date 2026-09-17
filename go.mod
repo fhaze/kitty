@@ -32,6 +32,9 @@ require (
 	howett.net/plist v1.0.1
 )
 
+// Vendored copy with Windows support, see 3rdparty/go-shm/shm_windows.go
+replace github.com/kovidgoyal/go-shm => ./3rdparty/go-shm
+
 // Uncomment the following to use a local checkout of dbus
 // replace github.com/kovidgoyal/dbus => ../dbus
 

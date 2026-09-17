@@ -642,14 +642,15 @@ class TestDataTypes(BaseTest):
             self.assertFalse(is_ok_to_read_image_path(path), path)
         for path in ('/tmp/a.png', '/dev/shm/a.png', os.path.join(tempfile.gettempdir(), 'a.png')):
             self.assertTrue(is_ok_to_read_image_path(path), path)
-        fifo = os.path.join(tempfile.gettempdir(), 'test-kitty-fifo')
-        os.mkfifo(fifo)
-        fifo_fd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
-        try:
-            self.assertFalse(is_ok_to_read_image_file(fifo, fifo_fd), fifo)
-        finally:
-            os.close(fifo_fd)
-            os.remove(fifo)
+        if hasattr(os, 'mkfifo'):
+            fifo = os.path.join(tempfile.gettempdir(), 'test-kitty-fifo')
+            os.mkfifo(fifo)
+            fifo_fd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+            try:
+                self.assertFalse(is_ok_to_read_image_file(fifo, fifo_fd), fifo)
+            finally:
+                os.close(fifo_fd)
+                os.remove(fifo)
         if os.path.isdir('/dev/shm'):
             with tempfile.NamedTemporaryFile(dir='/dev/shm') as tf:
                 self.assertTrue(is_ok_to_read_image_file(tf.name, tf.fileno()), fifo)
@@ -678,10 +679,16 @@ class TestDataTypes(BaseTest):
             '/a/../../',
             '/a/..',
             '/ab/../../../cd/.',
-            '///',
         ):
             self.assertEqual(os.path.abspath(x), abspath(x), repr(x))
-        self.assertEqual('/', abspath('//'))
+        if os.name == 'nt':
+            drive = os.path.splitdrive(os.getcwd())[0]
+            self.ae(abspath(f'{drive}\\a\\..\\b\\'), f'{drive}/b')
+            self.ae(abspath(f'{drive}/..'), f'{drive}/')
+            self.ae(abspath('//server/share/a/../b'), '//server/share/b')
+        else:  # // is a UNC prefix on Windows
+            self.assertEqual(os.path.abspath('///'), abspath('///'))
+            self.assertEqual('/', abspath('//'))
         with tempfile.TemporaryDirectory() as tdir:
             for x, ex in {
                 'a': None,

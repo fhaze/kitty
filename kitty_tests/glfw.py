@@ -45,7 +45,7 @@ class TestGLFW(BaseTest):
             t(1217, 100, 1217, unit='pixels')
             t(1217 + metrics['width'], 100, 1217, unit='pixels', incremental=True)
 
-    @unittest.skipIf(is_macos, 'Skipping test on macOS because glfw-cocoa.so is not built with backend_utils')
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Skipping test as only the Linux backends are built with backend_utils')
     def test_utf_8_strndup(self):
         import ctypes
 

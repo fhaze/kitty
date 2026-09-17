@@ -12,7 +12,7 @@ from itertools import count
 from typing import Any, NamedTuple, Set
 from weakref import ReferenceType, ref
 
-from .constants import cache_dir, config_dir, is_macos, logo_png_file, standard_icon_names, standard_sound_names, supports_window_occlusion
+from .constants import cache_dir, config_dir, is_macos, is_windows, logo_png_file, standard_icon_names, standard_sound_names, supports_window_occlusion
 from .fast_data_types import (
     ESC_OSC,
     StreamingBase64Decoder,
@@ -817,6 +817,33 @@ class FreeDesktopIntegration(DesktopIntegration):
         return desktop_notification_id
 
 
+class WindowsIntegration(DesktopIntegration):
+    # TODO: implement native toast notifications via WinRT. Until then
+    # notifications are tracked locally so the OSC 99 protocol works but
+    # nothing is shown on the desktop.
+    supports_close_events: bool = False
+    supports_buttons: bool = False
+    supports_sound: bool = False
+
+    def initialize(self) -> None:
+        self.live_notifications: set[int] = set()
+        self.id_counter = count(start=1)
+
+    def query_live_notifications(self, channel_id: int, identifier: str) -> None:
+        self.notification_manager.send_live_response(channel_id, identifier, tuple(self.live_notifications))
+
+    def close_notification(self, desktop_notification_id: int) -> bool:
+        self.live_notifications.discard(desktop_notification_id)
+        return False
+
+    def notify(self, nc: NotificationCommand, existing_desktop_notification_id: int | None) -> int:
+        desktop_notification_id = existing_desktop_notification_id or next(self.id_counter)
+        self.live_notifications.add(desktop_notification_id)
+        if debug_desktop_integration:
+            log_error(f'Desktop notifications are not yet implemented on Windows, dropping: {nc.title!r}')
+        return desktop_notification_id
+
+
 class UIState(NamedTuple):
     has_keyboard_focus: bool
     is_visible: bool
@@ -885,7 +912,12 @@ class NotificationManager:
         global debug_desktop_integration
         debug_desktop_integration = debug
         if desktop_integration is None:
-            self.desktop_integration = MacOSIntegration(self) if is_macos else FreeDesktopIntegration(self)
+            if is_macos:
+                self.desktop_integration = MacOSIntegration(self)
+            elif is_windows:
+                self.desktop_integration = WindowsIntegration(self)
+            else:
+                self.desktop_integration = FreeDesktopIntegration(self)
         else:
             self.desktop_integration = desktop_integration
         self.channel = channel

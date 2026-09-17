@@ -5,7 +5,6 @@ import os
 import re
 import socket
 import sys
-import termios
 import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import suppress
@@ -18,7 +17,7 @@ from kittens.tui.operations import colored, styled
 from .child import cmdline_of_pid
 from .cli import version
 from .colors import theme_colors
-from .constants import extensions_dir, is_macos, is_wayland, kitty_base_dir, kitty_exe, shell_path
+from .constants import extensions_dir, is_macos, is_wayland, is_windows, kitty_base_dir, kitty_exe, shell_path
 from .fast_data_types import Color, SingleKey, current_fonts, glfw_get_system_color_theme, gpu_driver_version_string, num_users, wayland_compositor_data
 from .options.types import Options as KittyOpts
 from .options.types import defaults, secret_options
@@ -182,12 +181,14 @@ class IssueData:
         self.formatted_time = self.d = time.strftime('%a %b %d %Y', _time)
         self.formatted_date = self.t = time.strftime('%H:%M:%S', _time)
         try:
-            self.tty_name = format_tty_name(os.ctermid())
+            self.tty_name = format_tty_name(os.ctermid()) if hasattr(os, 'ctermid') else '(none)'
         except OSError:
             self.tty_name = '(none)'
         self.l = self.tty_name
         self.baud_rate = 0
-        if sys.stdin.isatty():
+        if sys.stdin.isatty() and not is_windows:
+            import termios
+
             with suppress(OSError):
                 self.baud_rate = termios.tcgetattr(sys.stdin.fileno())[5]
         self.b = str(self.baud_rate)

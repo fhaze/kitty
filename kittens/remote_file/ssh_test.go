@@ -5,6 +5,7 @@ package remote_file
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -69,9 +70,9 @@ func TestHostnameMatches(t *testing.T) {
 }
 
 func TestAutoRenameDest(t *testing.T) {
-	taken := map[string]bool{"/x/a.txt": true, "/x/a-1.txt": true}
-	got := auto_rename_dest("/x/a.txt", func(p string) bool { return taken[p] })
-	if got != "/x/a-2.txt" {
+	taken := map[string]bool{filepath.FromSlash("/x/a.txt"): true, filepath.FromSlash("/x/a-1.txt"): true}
+	got := auto_rename_dest(filepath.FromSlash("/x/a.txt"), func(p string) bool { return taken[p] })
+	if got != filepath.FromSlash("/x/a-2.txt") {
 		t.Fatalf("auto_rename_dest: %q", got)
 	}
 }

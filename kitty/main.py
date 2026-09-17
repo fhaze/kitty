@@ -25,6 +25,7 @@ from .constants import (
     is_macos,
     is_quick_access_terminal_app,
     is_wayland,
+    is_windows,
     kitten_exe,
     kitty_exe,
     launched_by_launch_services,
@@ -102,7 +103,12 @@ def init_glfw_module(glfw_module: str = 'wayland', debug_keyboard: bool = False,
 
 
 def init_glfw(opts: Options, debug_keyboard: bool = False, debug_rendering: bool = False) -> str:
-    glfw_module = 'cocoa' if is_macos else ('wayland' if is_wayland(opts) else 'x11')
+    if is_macos:
+        glfw_module = 'cocoa'
+    elif is_windows:
+        glfw_module = 'win32'
+    else:
+        glfw_module = 'wayland' if is_wayland(opts) else 'x11'
     init_glfw_module(glfw_module, debug_keyboard, debug_rendering, wayland_enable_ime=opts.wayland_enable_ime)
     return glfw_module
 

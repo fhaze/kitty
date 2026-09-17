@@ -167,7 +167,9 @@ const char* load_glfw(const char* path);
 #define GFW_EXTERN
 #include "data-types.h"
 #include "glfw-wrapper.h"
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 
 static void* handle = NULL;
 

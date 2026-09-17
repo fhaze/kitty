@@ -7,7 +7,9 @@
 
 #include "data-types.h"
 #include "cleanup.h"
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 
 #define FUNC(name, restype, ...)                 \
     typedef restype (*name##_func)(__VA_ARGS__); \

@@ -53,6 +53,7 @@ from .constants import (
     handled_signals,
     is_macos,
     is_wayland,
+    is_windows,
     kitten_exe,
     kitty_exe,
     logo_png_file,
@@ -251,7 +252,7 @@ def listen_on(spec: str, robust_atexit: Atexit) -> tuple[int, str]:
     family, address, socket_path = parse_address_spec(spec)
     s = socket.socket(family)
     s.bind(address)
-    if family == socket.AF_UNIX and socket_path:
+    if socket_path:
         robust_atexit.unlink(socket_path)
     s.listen()
     if isinstance(address, tuple):  # tcp socket
@@ -2493,6 +2494,8 @@ class Boss:
     def notify_on_os_window_death(self, address: str) -> None:
         import socket
 
+        if is_windows:
+            return
         s = socket.socket(family=socket.AF_UNIX)
         with suppress(Exception):
             s.connect(address)

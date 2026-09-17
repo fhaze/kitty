@@ -11,7 +11,8 @@
 #include "glfw-wrapper.h"
 #include <structmember.h>
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) && !defined(_WIN32)
+#define HAS_XKB 1
 #include <xkbcommon/xkbcommon.h>
 #endif
 
@@ -50,7 +51,7 @@ is_modifier_key(const uint32_t key) {
 static bool
 is_no_action_key(const uint32_t key, const uint32_t native_key) {
     switch (native_key) {
-#ifndef __APPLE__
+#ifdef HAS_XKB
         case XKB_KEY_XF86Fn:
         case XKB_KEY_XF86WakeUp: return true;
 #endif

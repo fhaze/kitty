@@ -53,11 +53,9 @@ func AtomicWriteFile(path string, data io.Reader, perm os.FileMode) (err error) 
 			var f *os.File
 			f, err = os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".atomic-write-")
 			if err == nil {
-				removed := false
+				removed, closed := false, false
 				defer func() {
-					if err == nil {
-						err = f.Close()
-					} else {
+					if !closed {
 						f.Close()
 					}
 					if !removed {
@@ -68,8 +66,12 @@ func AtomicWriteFile(path string, data io.Reader, perm os.FileMode) (err error) 
 				if _, err = io.Copy(f, data); err == nil {
 					if err = f.Chmod(perm); err == nil {
 						if err = f.Sync(); err == nil { // Sync before rename to ensure we dont end up with a zero sized file
-							if err = os.Rename(f.Name(), path); err == nil {
-								removed = true
+							// Windows does not allow renaming open files
+							closed = true
+							if err = f.Close(); err == nil {
+								if err = os.Rename(f.Name(), path); err == nil {
+									removed = true
+								}
 							}
 						}
 					}

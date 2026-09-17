@@ -8,7 +8,13 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-#if __linux__
+#ifdef _WIN32
+#include "win32-compat.h"
+static inline bool
+secure_random_bytes(void *buf, size_t nbytes) {
+    return secure_random_bytes_win32(buf, nbytes);
+}
+#elif __linux__
 #include <errno.h>
 #if __has_include(<sys/random.h>)
 #include <sys/random.h>

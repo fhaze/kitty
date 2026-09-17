@@ -67,7 +67,12 @@ init_monotonic(void) {
     monotonic_start_time = monotonic_();
 }
 
-extern int timed_debug_print(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+#ifdef __MINGW32__
+#define KITTY_PRINTF_FORMAT gnu_printf
+#else
+#define KITTY_PRINTF_FORMAT printf
+#endif
+extern int timed_debug_print(const char *fmt, ...) __attribute__((format(KITTY_PRINTF_FORMAT, 1, 2)));
 
 #ifdef MONOTONIC_IMPLEMENTATION
 #include <time.h>
