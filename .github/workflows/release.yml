@@ -1,4 +1,4 @@
-name: Windows release
+name: Release
 on:
     push:
         tags: ['v*']
@@ -102,24 +102,83 @@ jobs:
               path: ${{ steps.pkg.outputs.zip }}
               if-no-files-found: error
 
+    static-kittens:
+        name: Build standalone kitten binaries
+        runs-on: ubuntu-latest
+        env:
+            CFLAGS: -funsigned-char
+
+        steps:
+          - name: Checkout source code
+            uses: actions/checkout@v7.0.1
+            with:
+              fetch-depth: 10
+              persist-credentials: false
+
+          - name: Set up Python
+            uses: actions/setup-python@v7.0.0
+            with:
+              python-version: "3.14"
+
+          - name: Install Go
+            uses: actions/setup-go@v7.0.0
+            with:
+              go-version-file: go.mod
+              cache: false
+
+          - name: Cache Go build artifacts
+            uses: actions/cache@v6.1.0
+            with:
+              path: |
+                ~/.cache/go-build
+                ~/go/pkg/mod
+              key: ${{ runner.os }}-golang-static-${{ hashFiles('**/go.sum') }}
+              restore-keys: |
+                ${{ runner.os }}-golang-static-
+
+          # A native kitty build is needed first: the Go sources depend on
+          # generated files produced by kitty +launch gen/go_code.py
+          - name: Build kitty
+            run: python .github/workflows/ci.py build
+
+          - name: Cross compile static kittens
+            run: python setup.py build-static-binaries
+
+          - name: Smoke test the Linux kitten
+            run: |
+              ls -l build/static
+              build/static/kitten-linux-amd64 --version
+
+          - name: Upload kitten artifacts
+            uses: actions/upload-artifact@v7.0.1
+            with:
+              name: kitten-static
+              path: build/static/kitten-*
+              if-no-files-found: error
+
     release:
         name: Publish GitHub release
-        needs: build
+        needs: [build, static-kittens]
         if: startsWith(github.ref, 'refs/tags/v')
         runs-on: ubuntu-latest
         permissions:
           contents: write
         steps:
-          - name: Download package artifact
+          - name: Download Windows package artifact
             uses: actions/download-artifact@v8.0.1
             with:
               name: kitty-windows-x86_64
+
+          - name: Download kitten artifacts
+            uses: actions/download-artifact@v8.0.1
+            with:
+              name: kitten-static
 
           - name: Create release
             env:
               GH_TOKEN: ${{ github.token }}
             run: |
-              gh release create "$GITHUB_REF_NAME" kitty-*-windows-*.zip \
+              gh release create "$GITHUB_REF_NAME" kitty-*-windows-*.zip kitten-* \
                 --repo "$GITHUB_REPOSITORY" \
-                --title "kitty $GITHUB_REF_NAME for Windows" \
+                --title "kitty $GITHUB_REF_NAME" \
                 --generate-notes
