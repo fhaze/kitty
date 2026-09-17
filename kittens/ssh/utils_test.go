@@ -28,6 +28,22 @@ func TestGetSSHOptions(t *testing.T) {
 	}
 }
 
+func TestParseSSHVersion(t *testing.T) {
+	for output, expected := range map[string]SSHVersion{
+		"OpenSSH_9.9p1, OpenSSL 3.4.0 22 Oct 2024\n":  {Major: 9, Minor: 9},
+		"OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2\n": {Major: 9, Minor: 5, IsWin32OpenSSH: true},
+		"OpenSSH_for_Windows_8.1p1, LibreSSL 3.0.2\n": {Major: 8, Minor: 1, IsWin32OpenSSH: true},
+		"unknown": {},
+	} {
+		if actual := parse_ssh_version([]byte(output)); actual != expected {
+			t.Fatalf("Parsing %#v failed: %#v != %#v", output, actual, expected)
+		}
+	}
+	if (SSHVersion{IsWin32OpenSSH: true}).SupportsControlMaster() || !(SSHVersion{Major: 9}).SupportsControlMaster() {
+		t.Fatal("SupportsControlMaster is wrong")
+	}
+}
+
 func TestParseSSHArgs(t *testing.T) {
 	split := func(x string) []string {
 		ans, err := shlex.Split(x)
