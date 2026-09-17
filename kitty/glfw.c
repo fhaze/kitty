@@ -2072,6 +2072,7 @@ create_os_window(PyObject UNUSED *self, PyObject *args, PyObject *kw) {
 
     const bool set_blur = OPT(background_blur) > 0 && OPT(background_opacity) < 1.f;
     glfwWindowHint(GLFW_BLUR_RADIUS, set_blur ? OPT(background_blur) : 0);
+    glfwWindowHint(GLFW_WIN32_BLUR_MODE, OPT(windows_blur_mode));
 #ifdef __APPLE__
     glfwWindowHint(GLFW_COCOA_COLOR_SPACE, OPT(macos_colorspace));
 #else

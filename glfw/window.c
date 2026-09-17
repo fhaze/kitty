@@ -341,6 +341,7 @@ glfwWindowHint(int hint, int value) {
         case GLFW_COCOA_RETINA_FRAMEBUFFER: _glfw.hints.window.ns.retina = value ? true : false; return;
         case GLFW_COCOA_COLOR_SPACE: _glfw.hints.window.ns.color_space = value; return;
         case GLFW_BLUR_RADIUS: _glfw.hints.window.blur_radius = value; return;
+        case GLFW_WIN32_BLUR_MODE: _glfw.hints.window.win32.blur_mode = value; return;
         case GLFW_COCOA_GRAPHICS_SWITCHING: _glfw.hints.context.nsgl.offline = value ? true : false; return;
         case GLFW_SCALE_TO_MONITOR: _glfw.hints.window.scaleToMonitor = value ? true : false; return;
         case GLFW_CENTER_CURSOR: _glfw.hints.window.centerCursor = value ? true : false; return;

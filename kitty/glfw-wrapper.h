@@ -804,6 +804,9 @@ typedef enum {
  *  [window hint](@ref GLFW_BLUR_RADIUS).
  */
 #define GLFW_BLUR_RADIUS 0x0002305
+#define GLFW_WIN32_BLUR_MODE 0x00023006
+#define GLFW_WIN32_BLUR_BLURBEHIND 0
+#define GLFW_WIN32_BLUR_ACRYLIC 1
 
 /*! @brief X11 specific
  *  [window hint](@ref GLFW_X11_CLASS_NAME_hint).

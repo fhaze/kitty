@@ -1619,6 +1619,7 @@ _glfwPlatformCreateWindow(
     _GLFWwindow *window, const _GLFWwndconfig *wndconfig, const _GLFWctxconfig *ctxconfig, const _GLFWfbconfig *fbconfig, const GLFWLayerShellConfig *lsc) {
     if (!createNativeWindow(window, wndconfig, fbconfig)) return false;
     if (lsc) window->win32.layer_shell_config = *lsc;
+    window->win32.blur_mode = wndconfig->win32.blur_mode;
     if (wndconfig->blur_radius > 0) _glfwPlatformSetWindowBlur(window, wndconfig->blur_radius);
 
     if (ctxconfig->client != GLFW_NO_API) {
@@ -2561,14 +2562,48 @@ _glfwPlatformSetWindowMousePassthrough(_GLFWwindow *window, bool enabled) {
     window->win32.mousePassthrough = enabled;
 }
 
+// Undocumented but stable since Windows 10 1803; unlike the documented
+// DWMWA_SYSTEMBACKDROP_TYPE acrylic backdrop, this is NOT disabled by DWM
+// when the window loses focus.
+typedef struct {
+    int AccentState;
+    int AccentFlags;
+    DWORD GradientColor;
+    int AnimationId;
+} GLFW_ACCENT_POLICY;
+typedef struct {
+    int Attribute;
+    GLFW_ACCENT_POLICY *Data;
+    ULONG SizeOfData;
+} GLFW_WINCOMPATTRDATA;
+typedef BOOL(WINAPI *PFN_SetWindowCompositionAttribute)(HWND, GLFW_WINCOMPATTRDATA *);
+
 int
 _glfwPlatformSetWindowBlur(_GLFWwindow *window, int blur_radius) {
     window->win32.blur_radius = blur_radius;
-    if (!_glfw.win32.dwmapi.SetWindowAttribute) return 0;
-    // DWMWA_SYSTEMBACKDROP_TYPE = 38, DWMSBT_TRANSIENTWINDOW (acrylic) = 3, DWMSBT_NONE = 1
-    DWORD backdrop = blur_radius > 0 ? 3 : 1;
-    HRESULT hr = DwmSetWindowAttribute(window->win32.handle, 38, &backdrop, sizeof(backdrop));
-    return SUCCEEDED(hr) ? (blur_radius > 0 ? blur_radius : 0) : 0;
+    const bool want_blur = blur_radius > 0;
+    const bool acrylic = want_blur && window->win32.blur_mode == GLFW_WIN32_BLUR_ACRYLIC;
+    // The DWM system backdrop (acrylic) and the SetWindowCompositionAttribute
+    // accent policy (blur-behind) fight each other, so always disable the
+    // mode that is not in use. DWMWA_SYSTEMBACKDROP_TYPE = 38,
+    // DWMSBT_NONE = 1, DWMSBT_TRANSIENTWINDOW (acrylic) = 3. Note that the
+    // acrylic backdrop is stripped by DWM whenever the window loses focus.
+    if (_glfw.win32.dwmapi.SetWindowAttribute) {
+        DWORD backdrop = acrylic ? 3 : 1;
+        DwmSetWindowAttribute(window->win32.handle, 38, &backdrop, sizeof(backdrop));
+    }
+    PFN_SetWindowCompositionAttribute swca = NULL;
+    glfw_dlsym(swca, GetModuleHandleW(L"user32.dll"), "SetWindowCompositionAttribute");
+    if (!swca) return acrylic ? blur_radius : 0;
+    // ACCENT_DISABLED = 0, ACCENT_ENABLE_BLURBEHIND = 3. Acrylic (4) renders
+    // opaque over the app's per-pixel alpha on Windows 11 22H2+, while plain
+    // blur-behind composes correctly with background_opacity. AccentFlags
+    // must be 0: flag 2 draws a solid GradientColor overlay that makes the
+    // window opaque.
+    GLFW_ACCENT_POLICY policy = {(want_blur && !acrylic) ? 3 : 0, 0, 0, 0};
+    GLFW_WINCOMPATTRDATA data = {19 /* WCA_ACCENT_POLICY */, &policy, sizeof(policy)};
+    if (!swca(window->win32.handle, &data)) return acrylic ? blur_radius : 0;
+    return want_blur ? blur_radius : 0;
 }
 
 bool

@@ -43,6 +43,7 @@ choices_for_underline_hyperlinks = typing.Literal['hover', 'always', 'never']
 choices_for_window_logo_position = choices_for_placement_strategy
 choices_for_window_title_bar = typing.Literal['top', 'bottom']
 choices_for_window_title_bar_align = typing.Literal['left', 'center', 'right']
+choices_for_windows_blur_mode = typing.Literal['blur', 'acrylic']
 
 option_names = (
     'action_alias',
@@ -525,6 +526,7 @@ option_names = (
     'window_title_bar_inactive_foreground',
     'window_title_bar_min_windows',
     'window_title_template',
+    'windows_blur_mode',
 )
 
 
@@ -739,6 +741,7 @@ class Options:
     window_title_bar_inactive_foreground: kitty.fast_data_types.Color | None = None
     window_title_bar_min_windows: int = 0
     window_title_template: str = '{fmt.fg.red}{bell_symbol}{activity_symbol}{fmt.fg.window}{progress_percent}{title}'
+    windows_blur_mode: choices_for_windows_blur_mode = 'blur'
     action_alias: dict[str, str] = {}
     env: dict[str, str] = {}
     exe_search_path: dict[str, str] = {}

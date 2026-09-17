@@ -120,6 +120,14 @@ undercurl_style(PyObject *x) {
     return ans;
 }
 
+static inline int
+windows_blur_mode(PyObject *x) {
+    const char *in = PyUnicode_AsUTF8(x);
+    // values of GLFW_WIN32_BLUR_ACRYLIC / GLFW_WIN32_BLUR_BLURBEHIND
+    if (in && strcmp(in, "acrylic") == 0) return 1;
+    return 0;
+}
+
 static inline UnderlineHyperlinks
 underline_hyperlinks(PyObject *x) {
     const char *in = PyUnicode_AsUTF8(x);
