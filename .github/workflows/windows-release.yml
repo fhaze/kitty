@@ -1,0 +1,112 @@
+name: Windows release
+on:
+    push:
+        tags: ['v*']
+    workflow_dispatch:
+
+env:
+    CI: 'true'
+    PYTHONUTF8: '1'
+
+permissions:
+  contents: read
+
+jobs:
+    build:
+        name: Build kitty.exe (MSYS2 UCRT64)
+        runs-on: windows-latest
+        defaults:
+            run:
+                shell: msys2 {0}
+        outputs:
+            zip: ${{ steps.pkg.outputs.zip }}
+
+        steps:
+          - name: Checkout source code
+            uses: actions/checkout@v7.0.1
+            with:
+              fetch-depth: 10
+              persist-credentials: false
+
+          - name: Install Go
+            uses: actions/setup-go@v7.0.0
+            with:
+              go-version-file: go.mod
+
+          - name: Set up MSYS2 UCRT64
+            uses: msys2/setup-msys2@v2.32.0
+            with:
+              msystem: UCRT64
+              update: true
+              path-type: inherit
+              install: >-
+                make git ncurses unzip
+                mingw-w64-ucrt-x86_64-gcc
+                mingw-w64-ucrt-x86_64-pkgconf
+                mingw-w64-ucrt-x86_64-python
+                mingw-w64-ucrt-x86_64-freetype
+                mingw-w64-ucrt-x86_64-harfbuzz
+                mingw-w64-ucrt-x86_64-libpng
+                mingw-w64-ucrt-x86_64-lcms2
+                mingw-w64-ucrt-x86_64-xxhash
+                mingw-w64-ucrt-x86_64-openssl
+                mingw-w64-ucrt-x86_64-zlib
+                mingw-w64-ucrt-x86_64-cairo
+                mingw-w64-ucrt-x86_64-fontconfig
+                mingw-w64-ucrt-x86_64-mesa
+
+          - name: Install slang shader compiler
+            run: |
+              curl -fsSL -o slang.zip https://github.com/shader-slang/slang/releases/download/v2026.14.1/slang-2026.14.1-windows-x86_64.zip
+              mkdir -p "$RUNNER_TEMP/slang" && unzip -qo slang.zip -d "$RUNNER_TEMP/slang"
+              echo "SLANGC=$(cygpath -m "$RUNNER_TEMP/slang/bin/slangc.exe")" >> "$GITHUB_ENV"
+
+          - name: Install Symbols Nerd Font Mono
+            run: |
+              curl -fsSL -o nerd.zip https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip
+              mkdir -p "$LOCALAPPDATA/Microsoft/Windows/Fonts"
+              unzip -qo -j nerd.zip SymbolsNerdFontMono-Regular.ttf -d "$LOCALAPPDATA/Microsoft/Windows/Fonts"
+
+          - name: Build Windows package
+            id: pkg
+            run: |
+              python setup.py windows-package
+              zip=$(ls windows-package/kitty-*-windows-*.zip)
+              echo "zip=$zip" >> "$GITHUB_OUTPUT"
+
+          - name: Smoke test the packaged executables
+            shell: cmd
+            run: |
+              cd windows-package\kitty\bin
+              kitty.exe --version || exit /b 1
+              kitten.exe --version || exit /b 1
+              kitty.exe +runpy "import ssl, sqlite3, kitty.fast_data_types" || exit /b 1
+
+          - name: Upload package artifact
+            uses: actions/upload-artifact@v7.0.1
+            with:
+              name: kitty-windows-x86_64
+              path: ${{ steps.pkg.outputs.zip }}
+              if-no-files-found: error
+
+    release:
+        name: Publish GitHub release
+        needs: build
+        if: startsWith(github.ref, 'refs/tags/v')
+        runs-on: ubuntu-latest
+        permissions:
+          contents: write
+        steps:
+          - name: Download package artifact
+            uses: actions/download-artifact@v8.0.1
+            with:
+              name: kitty-windows-x86_64
+
+          - name: Create release
+            env:
+              GH_TOKEN: ${{ github.token }}
+            run: |
+              gh release create "$GITHUB_REF_NAME" kitty-*-windows-*.zip \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "kitty $GITHUB_REF_NAME for Windows" \
+                --generate-notes

@@ -1690,9 +1690,12 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
         cppflags.append(f'-DSET_PYTHON_HOME="{ph}"')
         if not is_macos:
             ldflags += ['-Wl,--disable-new-dtags', f'-Wl,-rpath,$ORIGIN/../../{ph}/lib']
+    elif bundle_type == 'windows-package':
+        # The bundled Python runtime lives at <prefix>/lib/python3.x, two levels above <prefix>/lib/kitty
+        cppflags.append('-DSET_PYTHON_HOME="../.."')
     if bundle_type.startswith('macos-'):
         klp = '../Resources/kitty'
-    elif bundle_type.startswith('linux-'):
+    elif bundle_type.startswith('linux-') or bundle_type == 'windows-package':
         klp = '../{}/kitty'.format(args.libdir_name.strip('/'))
     elif bundle_type == 'source':
         klp = os.path.relpath('.', launcher_dir)
@@ -1747,6 +1750,82 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
 
 
 # Packaging {{{
+def windows_dll_imports(path: str) -> List[str]:
+    out = subprocess.check_output(['objdump', '-p', path]).decode('utf-8', 'replace')
+    return [line.split(':', 1)[1].strip() for line in out.splitlines() if line.strip().startswith('DLL Name:')]
+
+
+def bundle_windows_runtime(ddir: str, launcher_dir: str) -> None:
+    import compileall
+    import py_compile
+
+    # MSYS2 Python uses the POSIX layout: <prefix>/bin/libpythonX.Y.dll and <prefix>/lib/pythonX.Y
+    mingw_bin = os.path.dirname(os.path.abspath(sys.executable))
+    stdlib_src = sysconfig.get_path('stdlib')
+    stdlib_dest = os.path.join(ddir, 'lib', os.path.basename(stdlib_src))
+    if os.path.exists(stdlib_dest):
+        shutil.rmtree(stdlib_dest)
+    excluded_dirs = frozenset('test tests site-packages __pycache__ idlelib tkinter turtledemo ensurepip'.split())
+    excluded_pyd_prefixes = ('_tkinter', '_test', '_ctypes_test', 'xxlimited', '_xxtestfuzz')
+
+    def stdlib_ignore(parent: str, entries: Iterable[str]) -> List[str]:
+        ans = []
+        for x in entries:
+            if x in excluded_dirs or x.startswith('config-') or x == 'turtle.py':
+                ans.append(x)
+            elif x.endswith('.pyd') and x.startswith(excluded_pyd_prefixes):
+                ans.append(x)
+        return ans
+
+    shutil.copytree(stdlib_src, stdlib_dest, ignore=stdlib_ignore)
+    compileall.compile_dir(
+        stdlib_dest, force=True, optimize=2, quiet=1, workers=0, invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH, ddir=''
+    )
+
+    # MSYS2 fontconfig looks for its configuration in <dir of DLL>/../etc/fonts
+    fonts_conf_dest = os.path.join(ddir, 'etc', 'fonts')
+    if os.path.exists(fonts_conf_dest):
+        shutil.rmtree(fonts_conf_dest)
+    shutil.copytree(os.path.join(os.path.dirname(mingw_bin), 'etc', 'fonts'), fonts_conf_dest)
+
+    pydll = f'libpython{sysconfig.get_python_version()}.dll'
+    shutil.copy2(os.path.join(mingw_bin, pydll), launcher_dir)
+    pending = [os.path.join(launcher_dir, pydll), os.path.join(launcher_dir, 'kitty' + exe_ext)]
+    for root, dirs, files in os.walk(ddir):
+        for f in files:
+            if f.endswith(('.pyd', '.dll')):
+                p = os.path.join(root, f)
+                if p not in pending:
+                    pending.append(p)
+    seen: Set[str] = set()
+    # Copy every MinGW DLL reachable from the bundled binaries next to kitty.exe,
+    # which is on the default search path for both LoadLibrary and Python's extension loader
+    while pending:
+        path = pending.pop()
+        for dll in windows_dll_imports(path):
+            key = dll.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            src = os.path.join(mingw_bin, dll)
+            if not os.path.exists(src):
+                continue  # a system DLL
+            dest = os.path.join(launcher_dir, dll)
+            if not os.path.exists(dest):
+                shutil.copy2(src, dest)
+            pending.append(dest)
+
+
+def create_windows_zip(ddir: str) -> str:
+    machine = platform.machine().lower()
+    arch = {'amd64': 'x86_64', 'x86_64': 'x86_64', 'arm64': 'arm64', 'aarch64': 'arm64'}.get(machine, machine)
+    ver = '.'.join(map(str, version))
+    base_name = os.path.join(os.path.dirname(os.path.abspath(ddir)), f'kitty-{ver}-windows-{arch}')
+    ans = shutil.make_archive(base_name, 'zip', root_dir=os.path.dirname(os.path.abspath(ddir)), base_dir=os.path.basename(ddir))
+    print(f'Created {emphasis(os.path.relpath(ans))}')
+    return ans
+
+
 def copy_man_pages(ddir: str) -> None:
     mandir = os.path.join(ddir, 'share', 'man')
     safe_makedirs(mandir)
@@ -2202,10 +2281,16 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
     shutil.copy2('logo/beam-cursor@2x.png', os.path.join(libdir, 'logo'))
     shutil.copytree('shell-integration', os.path.join(libdir, 'shell-integration'), dirs_exist_ok=True)
     shutil.copytree('fonts', os.path.join(libdir, 'fonts'), dirs_exist_ok=True)
-    allowed_extensions = frozenset('py slang glsl so'.split())
+    allowed_extensions = frozenset('py slang glsl so pyd'.split())
 
     def src_ignore(parent: str, entries: Iterable[str]) -> List[str]:
-        return [x for x in entries if '.' in x and x.rpartition('.')[2] not in allowed_extensions]
+        ans = []
+        for x in entries:
+            if '.' in x and x.rpartition('.')[2] not in allowed_extensions:
+                if is_windows and x.startswith('glfw-') and x.endswith('.dll'):
+                    continue
+                ans.append(x)
+        return ans
 
     shutil.copytree('kitty', os.path.join(libdir, 'kitty'), ignore=src_ignore)
     shutil.copytree('kittens', os.path.join(libdir, 'kittens'), ignore=src_ignore)
@@ -2245,6 +2330,9 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
         for f_ in files:
             path = os.path.join(root, f_)
             os.chmod(path, 0o755 if should_be_executable(path) else 0o644)
+    if bundle_type == 'windows-package':
+        # must happen before building the shaders, which runs the packaged kitty.exe
+        bundle_windows_runtime(ddir, launcher_dir)
     if not for_freeze:
         if not bundle_type.startswith('macos-'):
             build_static_kittens(args, launcher_dir=launcher_dir)
@@ -2254,6 +2342,8 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
 
     if bundle_type.startswith('macos-'):
         create_macos_bundle_gunk(ddir, for_freeze, args)
+    elif bundle_type == 'windows-package':
+        create_windows_zip(ddir)
 
 
 # }}}
@@ -2278,7 +2368,7 @@ def clean(for_cross_compile: bool = False) -> None:
                     os.unlink(x)
 
     safe_remove(
-        'build', 'compile_commands.json', 'link_commands.json', 'linux-package', 'kitty.app', 'asan-launcher', 'kitty-profile'
+        'build', 'compile_commands.json', 'link_commands.json', 'linux-package', 'windows-package', 'kitty.app', 'asan-launcher', 'kitty-profile'
     )  # no fonts as that is not generated by build
     if not for_cross_compile:
         safe_remove('docs/generated', 'shaders')
@@ -2322,6 +2412,7 @@ def option_parser() -> argparse.ArgumentParser:  # {{{
             'test',
             'develop',
             'linux-package',
+            'windows-package',
             'kitty.app',
             'linux-freeze',
             'macos-freeze',
@@ -2575,6 +2666,13 @@ def do_build(args: Options) -> None:
         elif args.action == 'linux-freeze':
             build(args, native_optimizations=False)
             package(args, bundle_type='linux-freeze')
+        elif args.action == 'windows-package':
+            if not is_windows:
+                raise SystemExit('windows-package can only be built on Windows')
+            if args.prefix == os.path.abspath(Options.prefix):
+                args.prefix = os.path.abspath(os.path.join('windows-package', 'kitty'))
+            build(args, native_optimizations=False)
+            package(args, bundle_type='windows-package')
         elif args.action == 'kitty.app':
             args.prefix = 'kitty.app'
             if os.path.exists(args.prefix):
