@@ -4,7 +4,7 @@
 import os
 import subprocess
 
-from kitty.child import memory_used_by_process_tree_rooted_at
+from kitty.child import add_kitty_vars_to_wslenv, memory_used_by_process_tree_rooted_at
 from kitty.constants import is_macos, kitty_exe
 
 from .base import BaseTest
@@ -80,6 +80,19 @@ time.sleep(300)
             )
         finally:
             self._terminate(child)
+
+    def test_wslenv(self):
+        env = {'TERM': 'xterm-kitty', 'COLORTERM': 'truecolor', 'KITTY_WINDOW_ID': '1', 'KITTY_PID': '2', 'TERMINFO': r'C:\kitty\terminfo'}
+        add_kitty_vars_to_wslenv(env)
+        self.ae(env['WSLENV'], 'TERM:COLORTERM:KITTY_WINDOW_ID:KITTY_PID:TERMINFO/p')
+
+        env = {'TERM': 'xterm-kitty', 'TERMINFO': 'b64:abcd', 'WSLENV': 'WT_SESSION:TERM/u'}
+        add_kitty_vars_to_wslenv(env, 'direct')
+        self.ae(env['WSLENV'], 'WT_SESSION:TERM/u:TERMINFO')
+
+        env = {'PWD': '/tmp'}
+        add_kitty_vars_to_wslenv(env)
+        self.assertNotIn('WSLENV', env)
 
     def test_memory_cgroup_path_returns_positive(self):
         # The fast cgroup path (check_if_cgroup_root=False, the default) must
