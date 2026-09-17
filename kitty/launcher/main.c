@@ -329,11 +329,16 @@ is_valid_fd(int fd) {
 
 static bool
 reopen_to_null(const char *mode, FILE *stream) {
+#ifdef _WIN32
+    const char *null_device = "NUL";
+#else
+    const char *null_device = "/dev/null";
+#endif
     errno = 0;
     while (true) {
-        if (freopen("/dev/null", mode, stream) != NULL) return true;
+        if (freopen(null_device, mode, stream) != NULL) return true;
         if (errno == EINTR) continue;
-        perror("Failed to re-open STDIO handle to /dev/null");
+        perror("Failed to re-open STDIO handle to the null device");
         return false;
     }
 }
@@ -608,6 +613,14 @@ main(int argc_, char *argv_[], char *envp[]) {
         fprintf(stderr, "Invalid argc/argv\n");
         return 1;
     }
+#ifdef _WIN32
+    // kitty.exe is a GUI subsystem executable so that launching it does not
+    // pop up a console window. Attach to the parent's console, if any, so
+    // that output from things like --version still shows up in the shell,
+    // except when re-executed for --detach, closing the console would then
+    // kill kitty as well.
+    if (!getenv("KITTY_EXEC_FOR_DETACH")) win32_attach_parent_console();
+#endif
     if (argc_ > 1 && strcmp(argv_[1], "+testing-launcher-code") == 0) {
         being_tested = true;
         memmove(argv_ + 1, argv_ + 2, (--argc_ - 1) * sizeof(argv_[0]));
