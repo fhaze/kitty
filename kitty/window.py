@@ -30,8 +30,8 @@ from .cli_stub import CLIOptions, SaveAsSessionOptions
 from .clipboard import ClipboardRequestManager, set_clipboard_string
 from .constants import (
     appname,
-    clear_handled_signals,
     config_dir,
+    helper_process_popen_kwargs,
     is_macos,
     kitten_exe,
     unserialize_launch_flag,
@@ -1611,7 +1611,7 @@ class Window:
 
             env = self.child.foreground_environ
             env['KITTY_CHILD_CMDLINE'] = ' '.join(map(shlex.quote, self.child.cmdline))
-            subprocess.Popen(cb, env=env, cwd=self.child.foreground_cwd, preexec_fn=clear_handled_signals)
+            subprocess.Popen(cb, env=env, cwd=self.child.foreground_cwd, **helper_process_popen_kwargs())
         if not self.is_active:
             changed = not self.needs_attention
             self.needs_attention = True

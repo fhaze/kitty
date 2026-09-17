@@ -20,8 +20,8 @@ from .config import cached_values_for
 from .constants import (
     appname,
     beam_cursor_data_file,
-    clear_handled_signals,
     glfw_path,
+    helper_process_popen_kwargs,
     is_macos,
     is_quick_access_terminal_app,
     is_wayland,
@@ -434,7 +434,7 @@ def setup_profiling() -> Generator[None, None, None]:
         with open(cg, 'wb') as f:
             subprocess.call(['pprof', '--callgrind', exe, '/tmp/kitty-profile.log'], stdout=f)
         try:
-            subprocess.Popen(['kcachegrind', cg], preexec_fn=clear_handled_signals)
+            subprocess.Popen(['kcachegrind', cg], **helper_process_popen_kwargs())
         except FileNotFoundError:
             subprocess.call(['pprof', '--text', exe, '/tmp/kitty-profile.log'])
             print('To view the graphical call data, use: kcachegrind', cg)

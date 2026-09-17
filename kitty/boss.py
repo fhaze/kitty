@@ -48,9 +48,9 @@ from .constants import (
     RC_ENCRYPTION_PROTOCOL_VERSION,
     appname,
     cache_dir,
-    clear_handled_signals,
     config_dir,
     handled_signals,
+    helper_process_popen_kwargs,
     is_macos,
     is_wayland,
     is_windows,
@@ -229,7 +229,9 @@ class Atexit:
             raise ValueError('Newlines not allowed in atexit arguments: {path!r}')
         w = self.worker
         if w is None:
-            w = self.worker = subprocess.Popen([kitten_exe(), '__atexit__'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, close_fds=True)
+            w = self.worker = subprocess.Popen(
+                [kitten_exe(), '__atexit__'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, close_fds=True, **helper_process_popen_kwargs()
+            )
             assert w.stdin is not None
             os.set_inheritable(w.stdin.fileno(), False)
         assert w.stdin is not None
@@ -1540,6 +1542,7 @@ class Boss:
             self.config_reload_watcher_process = subprocess.Popen(
                 [kitten_exe(), '__watch_conf__', str(os.getpid()), str(int(opts.auto_reload_config * 1000))] + list(opts.all_config_paths),
                 stdin=subprocess.PIPE,
+                **helper_process_popen_kwargs(),
             )
 
     def handle_window_title_bar_mouse(self, os_window_id: int, window_id: int, x: float, y: float, button: int, modifiers: int, action: int) -> None:
@@ -3210,7 +3213,7 @@ class Boss:
 
             def run(stdin: int | None, stdout: int | None, stderr: int | None) -> None:
                 try:
-                    p = subprocess.Popen(cmd, env=env, cwd=cwd, preexec_fn=clear_handled_signals, pass_fds=pass_fds, stdin=stdin, stdout=stdout, stderr=stderr)
+                    p = subprocess.Popen(cmd, env=env, cwd=cwd, **helper_process_popen_kwargs(), pass_fds=pass_fds, stdin=stdin, stdout=stdout, stderr=stderr)
                     if notify_on_death:
                         self.background_process_death_notify_map[p.pid] = notify_on_death
                         monitor_pid(p.pid)
