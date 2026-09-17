@@ -33,6 +33,46 @@ bool win32_pty_resize(int master_fd, unsigned short rows, unsigned short cols);
 bool win32_pty_signal_pid(pid_t pid, int sig);
 void win32_pty_init(void);
 
+// The in-box conhost.exe that kernel32's CreatePseudoConsole() spawns drops
+// escape sequences it does not understand, which includes the APC based kitty
+// graphics protocol. The MIT licensed conpty.dll + OpenConsole.exe from the
+// Windows Terminal project (NuGet package Microsoft.Windows.Console.ConPTY)
+// relay them unmodified, so prefer that when it is installed next to kitty.exe.
+typedef HRESULT(WINAPI *create_pseudo_console_func)(COORD, HANDLE, HANDLE, DWORD, HPCON *);
+typedef HRESULT(WINAPI *resize_pseudo_console_func)(HPCON, COORD);
+typedef VOID(WINAPI *close_pseudo_console_func)(HPCON);
+static struct {
+    create_pseudo_console_func create;
+    resize_pseudo_console_func resize;
+    close_pseudo_console_func close;
+} conpty_api = {0};
+
+static void
+load_conpty_api(void) {
+    conpty_api.create = CreatePseudoConsole;
+    conpty_api.resize = ResizePseudoConsole;
+    conpty_api.close = ClosePseudoConsole;
+    wchar_t path[MAX_PATH + 64];
+    DWORD n = GetModuleFileNameW(NULL, path, MAX_PATH);
+    if (!n || n >= MAX_PATH) return;
+    wchar_t *slash = wcsrchr(path, L'\\');
+    if (!slash) return;
+    wcscpy(slash + 1, L"conpty.dll");
+    HMODULE m = LoadLibraryExW(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (!m) return;
+    create_pseudo_console_func c = NULL;
+    resize_pseudo_console_func r = NULL;
+    close_pseudo_console_func x = NULL;
+    *(void **)(&c) = dlsym(m, "ConptyCreatePseudoConsole");
+    *(void **)(&r) = dlsym(m, "ConptyResizePseudoConsole");
+    *(void **)(&x) = dlsym(m, "ConptyClosePseudoConsole");
+    if (c && r && x) {
+        conpty_api.create = c;
+        conpty_api.resize = r;
+        conpty_api.close = x;
+    } else FreeLibrary(m);
+}
+
 typedef struct Win32Pty {
     HPCON hpc;
     HANDLE pty_in_write, pty_out_read;
@@ -71,7 +111,7 @@ close_pseudo_console(Win32Pty *pty) {
         // Closing the pty input pipe tells conhost there will be no more
         // input, ClosePseudoConsole() then terminates conhost which closes
         // the output pipe, so the output bridge thread sees EOF.
-        ClosePseudoConsole(pty->hpc);
+        conpty_api.close(pty->hpc);
     }
 }
 
@@ -217,7 +257,7 @@ win32_pty_open(int *master_fd, int *slave_fd, unsigned short rows, unsigned shor
         goto fail;
     }
     COORD size = {.X = (SHORT)(cols ? cols : 80), .Y = (SHORT)(rows ? rows : 24)};
-    HRESULT hr = CreatePseudoConsole(size, in_read, out_write, 0, &pty->hpc);
+    HRESULT hr = conpty_api.create(size, in_read, out_write, 0, &pty->hpc);
     if (FAILED(hr)) {
         log_error("CreatePseudoConsole failed with HRESULT: 0x%08lx", (unsigned long)hr);
         errno = hr == E_OUTOFMEMORY ? ENOMEM : EIO;
@@ -521,7 +561,7 @@ win32_pty_resize(int master_fd, unsigned short rows, unsigned short cols) {
         return false;
     }
     COORD size = {.X = (SHORT)cols, .Y = (SHORT)rows};
-    HRESULT hr = pty->pty_closed ? S_OK : ResizePseudoConsole(pty->hpc, size);
+    HRESULT hr = pty->pty_closed ? S_OK : conpty_api.resize(pty->hpc, size);
     pty_unref(pty);
     if (FAILED(hr)) {
         errno = EIO;
@@ -558,6 +598,7 @@ win32_pty_init(void) {
     if (initialized) return;
     initialized = true;
     win32_compat_init();
+    load_conpty_api();
     InitializeCriticalSection(&ptys_lock);
     kitty_win32_on_fd_close = on_master_fd_closed;
 }

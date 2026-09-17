@@ -34,3 +34,5 @@ _codeql_detected_source_root
 *.pyd
 /kitty/glfw-*.dll
 /kitty/launcher/*.dll
+/kitty/launcher/OpenConsole.exe
+/kitty/launcher/OpenConsole-LICENSE.txt

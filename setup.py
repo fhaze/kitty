@@ -3,6 +3,7 @@
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import platform
@@ -1814,6 +1815,72 @@ def bundle_windows_runtime(ddir: str, launcher_dir: str) -> None:
             pending.append(dest)
 
 
+# The in-box conhost.exe drops escape sequences it does not understand, which
+# includes the kitty graphics protocol. The MIT licensed ConPTY from the Windows
+# Terminal project relays them, kitty/win32-pty.c uses it when it is next to kitty.exe.
+CONPTY_NUGET_VERSION = '1.24.260710001'
+CONPTY_NUGET_SHA256 = '175640566a3b59c4b132070ee96c2c77e5ab7edd2e92732a5eb3610bbf63d90e'
+
+
+def bundle_conpty(launcher_dir: str) -> None:
+    import zipfile
+    from urllib.request import urlopen
+
+    machine = platform.machine().lower()
+    arch = {'amd64': 'x64', 'x86_64': 'x64', 'arm64': 'arm64', 'aarch64': 'arm64'}.get(machine, machine)
+    cache_dir = os.path.join(build_dir, 'conpty')
+    safe_makedirs(cache_dir)
+    nupkg = os.path.join(cache_dir, f'Microsoft.Windows.Console.ConPTY.{CONPTY_NUGET_VERSION}.nupkg')
+    if not os.path.exists(nupkg):
+        url = f'https://www.nuget.org/api/v2/package/Microsoft.Windows.Console.ConPTY/{CONPTY_NUGET_VERSION}'
+        print('Downloading', url)
+        with urlopen(url) as src:
+            data = src.read()
+        with open(nupkg, 'wb') as f:
+            f.write(data)
+    with open(nupkg, 'rb') as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    if digest != CONPTY_NUGET_SHA256:
+        os.remove(nupkg)
+        raise SystemExit(f'SHA256 mismatch for {nupkg}: expected {CONPTY_NUGET_SHA256} got {digest}')
+    with zipfile.ZipFile(nupkg) as zf:
+        for member, dest in (
+            (f'runtimes/win-{arch}/native/conpty.dll', 'conpty.dll'),
+            (f'build/native/runtimes/{arch}/OpenConsole.exe', 'OpenConsole.exe'),
+        ):
+            with zf.open(member) as src, open(os.path.join(launcher_dir, dest), 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+    with open(os.path.join(launcher_dir, 'OpenConsole-LICENSE.txt'), 'w') as f:
+        f.write(
+            textwrap.dedent("""\
+            conpty.dll and OpenConsole.exe are from the Windows Terminal project
+            https://github.com/microsoft/terminal
+
+            MIT License
+
+            Copyright (c) Microsoft Corporation. All rights reserved.
+
+            Permission is hereby granted, free of charge, to any person obtaining a copy
+            of this software and associated documentation files (the "Software"), to deal
+            in the Software without restriction, including without limitation the rights
+            to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+            copies of the Software, and to permit persons to whom the Software is
+            furnished to do so, subject to the following conditions:
+
+            The above copyright notice and this permission notice shall be included in all
+            copies or substantial portions of the Software.
+
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+            IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+            FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+            AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+            LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+            OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+            SOFTWARE.
+        """)
+        )
+
+
 def create_windows_zip(ddir: str) -> str:
     machine = platform.machine().lower()
     arch = {'amd64': 'x86_64', 'x86_64': 'x86_64', 'arm64': 'arm64', 'aarch64': 'arm64'}.get(machine, machine)
@@ -2331,6 +2398,7 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
     if bundle_type == 'windows-package':
         # must happen before building the shaders, which runs the packaged kitty.exe
         bundle_windows_runtime(ddir, launcher_dir)
+        bundle_conpty(launcher_dir)
     if not for_freeze:
         if not bundle_type.startswith('macos-'):
             build_static_kittens(args, launcher_dir=launcher_dir)

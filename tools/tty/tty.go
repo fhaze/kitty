@@ -3,10 +3,13 @@
 package tty
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/emmansun/base64"
 
@@ -163,6 +166,50 @@ func DebugPrintln(a ...any) {
 	if err == nil {
 		defer term.Close()
 		term.DebugPrintln(a...)
+	}
+}
+
+var pixel_size_report_pat = regexp.MustCompile(`\x1b\[4;(\d+);(\d+)t`)
+
+var ErrNoPixelSizeReport = errors.New("terminal did not report its size in pixels")
+
+// QueryPixelSizeFromTerminal fills in ws.Xpixel and ws.Ypixel by asking the
+// terminal emulator for the size of its text area in pixels with XTWINOPS
+// (CSI 14 t), for platforms whose console API has no notion of pixel sizes.
+// Any unrelated input read while waiting for the reply is discarded.
+func QueryPixelSizeFromTerminal(ws *Winsize, timeout time.Duration) error {
+	term, err := OpenControllingTerm(SetRaw)
+	if err != nil {
+		return err
+	}
+	defer term.RestoreAndClose()
+	if err = term.WriteAllString("\x1b[14t"); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(timeout)
+	var buf [256]byte
+	ans := make([]byte, 0, 64)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return ErrNoPixelSizeReport
+		}
+		n, err := term.ReadWithTimeout(buf[:], remaining)
+		if n > 0 {
+			ans = append(ans, buf[:n]...)
+			if m := pixel_size_report_pat.FindSubmatch(ans); m != nil {
+				h, _ := strconv.ParseUint(string(m[1]), 10, 16)
+				w, _ := strconv.ParseUint(string(m[2]), 10, 16)
+				if h == 0 || w == 0 {
+					return ErrNoPixelSizeReport
+				}
+				ws.Ypixel, ws.Xpixel = uint16(h), uint16(w)
+				return nil
+			}
+		}
+		if err != nil && !is_temporary_read_error(err) {
+			return err
+		}
 	}
 }
 

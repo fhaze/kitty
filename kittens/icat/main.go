@@ -187,6 +187,10 @@ func main(cmd *cli.Command, o *Options, args []string) (rc int, err error) {
 		if err != nil {
 			return 1, fmt.Errorf("Failed to query terminal using TIOCGWINSZ with error: %w", err)
 		}
+		// The Windows console API has no pixel sizes, ask the terminal directly
+		if runtime.GOOS == "windows" && (screen_size.Xpixel == 0 || screen_size.Ypixel == 0) {
+			_ = tty.QueryPixelSizeFromTerminal(screen_size, 2*time.Second)
+		}
 	} else {
 		parts := strings.SplitN(opts.UseWindowSize, ",", 4)
 		if len(parts) != 4 {
