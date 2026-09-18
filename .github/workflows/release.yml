@@ -21,6 +21,7 @@ jobs:
                 shell: msys2 {0}
         outputs:
             zip: ${{ steps.pkg.outputs.zip }}
+            setup: ${{ steps.pkg.outputs.setup }}
 
         steps:
           - name: Checkout source code
@@ -79,12 +80,22 @@ jobs:
               fc-cache -f >/dev/null
               fc-list :postscriptname=SymbolsNFM | grep -q . || { echo 'Nerd font not visible to fontconfig'; exit 1; }
 
+          - name: Install Inno Setup
+            shell: pwsh
+            run: |
+              if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+                choco install innosetup -y --no-progress
+              }
+              (Get-Item "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe").VersionInfo.ProductVersion
+
           - name: Build Windows package
             id: pkg
             run: |
               python setup.py windows-package
               zip=$(ls windows-package/kitty-*-windows-*.zip)
               echo "zip=$zip" >> "$GITHUB_OUTPUT"
+              setup=$(ls windows-package/kitty-*-windows-*-setup.exe)
+              echo "setup=$setup" >> "$GITHUB_OUTPUT"
 
           - name: Smoke test the packaged executables
             shell: cmd
@@ -97,12 +108,55 @@ jobs:
               rem WSL distros look up the terminfo under x\ not the hex encoded 78\ that tic writes on Windows
               if not exist ..\lib\kitty\terminfo\x\xterm-kitty exit /b 1
               if not exist ..\lib\kitty\terminfo\78\xterm-kitty exit /b 1
+              rem Linux kittens for WSL, installed by kitty +wsl-setup
+              if not exist ..\lib\kitty\windows\wsl\install-kitten.sh exit /b 1
+              if not exist ..\lib\kitty\windows\wsl\kitten-linux-amd64 exit /b 1
+              if not exist ..\lib\kitty\windows\wsl\kitten-linux-arm64 exit /b 1
+
+          - name: Smoke test the installer (install, upgrade, uninstall)
+            env:
+              # keep /VERYSILENT etc. from being turned into paths by the MSYS2 shell
+              MSYS2_ARG_CONV_EXCL: '*'
+            run: |
+              set -ex
+              setup=$(ls windows-package/kitty-*-windows-*-setup.exe)
+              tmp=$(cygpath -w "$RUNNER_TEMP")
+              dir="$tmp\\kitty-install"
+              uninstall_key='HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D0F3A2B-5C4E-4F19-9B6A-2E8D1C3F5A70}_is1'
+
+              "$setup" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /TASKS=addtopath /DIR="$dir" /LOG="$tmp\\kitty-setup-1.log"
+              "$dir\\bin\\kitten.exe" --version
+              test -e "$dir\\lib\\kitty\\windows\\wsl\\kitten-linux-amd64"
+              reg query 'HKCU\Environment' /v Path | grep -F "kitty-install\\bin"
+
+              # A newer installer must upgrade in place: same directory and tasks, stale files removed
+              echo stale > "$dir\\lib\\stale.py"
+              iscc=$(cygpath -u "$(python -c 'import setup; print(setup.find_iscc())')")
+              "$iscc" /Qp /DAppVersion=99.0.0 /DArch=x86_64 "/DSourceDir=$(cygpath -aw windows-package/kitty)" "/DOutputDir=$tmp" "$(cygpath -aw windows/kitty.iss)"
+              "$tmp\\kitty-99.0.0-windows-x86_64-setup.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /LOG="$tmp\\kitty-setup-2.log"
+              test ! -e "$dir\\lib\\stale.py"
+              "$dir\\bin\\kitten.exe" --version
+              reg query "$uninstall_key" /v DisplayVersion | grep -F 99.0.0
+              test "$(reg query 'HKCU\Environment' /v Path | grep -oF "kitty-install\\bin" | wc -l)" -eq 1
+
+              "$dir\\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+              # the uninstaller hands over to a copy of itself in %TEMP% and returns before that finishes
+              for i in $(seq 20); do
+                reg query 'HKCU\Environment' /v Path | grep -qF "kitty-install\\bin" || break
+                sleep 3
+              done
+              test ! -e "$dir\\bin"
+              reg query "$uninstall_key" && exit 1
+              reg query 'HKCU\Environment' /v Path | grep -F "kitty-install\\bin" && exit 1
+              echo installer OK
 
           - name: Upload package artifact
             uses: actions/upload-artifact@v7.0.1
             with:
               name: kitty-windows-x86_64
-              path: ${{ steps.pkg.outputs.zip }}
+              path: |
+                ${{ steps.pkg.outputs.zip }}
+                ${{ steps.pkg.outputs.setup }}
               if-no-files-found: error
 
     static-kittens:
@@ -181,7 +235,7 @@ jobs:
             env:
               GH_TOKEN: ${{ github.token }}
             run: |
-              gh release create "$GITHUB_REF_NAME" kitty-*-windows-*.zip kitten-* \
+              gh release create "$GITHUB_REF_NAME" kitty-*-windows-*-setup.exe kitty-*-windows-*.zip kitten-* \
                 --repo "$GITHUB_REPOSITORY" \
                 --title "kitty $GITHUB_REF_NAME" \
                 --generate-notes

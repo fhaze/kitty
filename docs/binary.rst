@@ -39,6 +39,65 @@ tarball and extract it into a directory. The |kitty| executable will be in the
 :file:`bin` sub-directory.
 
 
+Windows
+------------
+
+On Windows, download :file:`kitty-<version>-windows-x86_64-setup.exe` from the
+`GitHub releases page <https://github.com/kovidgoyal/kitty/releases>`__ and run
+it. The installer:
+
+* installs for the current user by default (no administrator rights needed),
+  or for all users if you choose so
+* can add the :file:`bin` directory containing :program:`kitty` and
+  :program:`kitten` to your :envvar:`PATH`
+* can install the Linux :program:`kitten` binary into your WSL distributions
+  (see below)
+
+To update kitty, simply run the installer for the newer version. It upgrades
+the existing installation in place, keeping the install location and the
+options you chose the first time. Your configuration is not touched, it lives
+in :file:`%USERPROFILE%\\.config\\kitty\\kitty.conf` outside the install
+directory.
+
+Unattended installation and upgrades are supported via the usual
+`Inno Setup <https://jrsoftware.org/ishelp/index.php?topic=setupcmdline>`__
+switches, for example::
+
+    kitty-0.44.0-windows-x86_64-setup.exe /VERYSILENT /CURRENTUSER /TASKS=addtopath,wsl
+
+If you prefer not to run an installer, :file:`kitty-<version>-windows-x86_64.zip`
+contains the same files, extract it anywhere and run :file:`bin\\kitty.exe`.
+
+
+kitten in WSL
+^^^^^^^^^^^^^^^^
+
+The Windows package bundles Linux builds of :program:`kitten` (``amd64`` and
+``arm64``) so that :doc:`kittens </kittens_intro>`, the :ref:`shell integration
+<shell_integration>` and the :doc:`remote control </remote-control>` work inside
+WSL just like on Linux. Select the *WSL* task in the installer, or run at any
+time::
+
+    kitty +wsl-setup
+
+This copies :program:`kitten` to :file:`~/.local/bin/kitten` in every WSL
+distribution and adds that directory to the :envvar:`PATH` of your login shell,
+by editing :file:`~/.bashrc` (bash), :file:`~/.zshrc` (zsh),
+:file:`~/.config/fish/conf.d/kitty-wsl-kitten.fish` (fish),
+:file:`~/.tcshrc`/:file:`~/.cshrc` (tcsh/csh) or :file:`~/.profile` (any other
+shell). The edit is a clearly marked block that is updated, never duplicated,
+on subsequent runs. Distributions belonging to other programs, such as
+``docker-desktop``, are skipped. To only set up some distributions or to skip
+editing shell startup files::
+
+    kitty +wsl-setup Ubuntu-24.04 Debian
+    kitty +wsl-setup --no-path
+
+``kitty +wsl-setup --uninstall`` removes the binary and the :envvar:`PATH`
+block again, the Windows uninstaller does this automatically when the WSL task
+was selected.
+
+
 Desktop integration on Linux
 --------------------------------
 
