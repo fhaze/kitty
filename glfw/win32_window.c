@@ -45,8 +45,17 @@ static GLFWColorScheme query_system_color_theme(void);
 #define WM_KITTY_TIMER_CHECK (WM_APP + 1)
 #define WM_KITTY_DROP_DATA (WM_APP + 2)
 #define WM_KITTY_WAKEUP (WM_APP + 3)
+#define WM_KITTY_RESTORE_FOCUS (WM_APP + 4)
 
 static const char *drop_mimes[] = {"text/uri-list", "text/plain"};
+
+static bool
+isWSLgFocusWindow(HWND handle) {
+    WCHAR className[64];
+    if (!handle || IsWindowVisible(handle)) return false;
+    if (!GetClassNameW(handle, className, sizeof(className) / sizeof(className[0]))) return false;
+    return wcscmp(className, L"TscShellContainerClass") == 0;
+}
 
 static void
 encode_utf8(uint32_t ch, char *buf, size_t *len) {
@@ -1021,6 +1030,12 @@ windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             if (window->monitor && window->autoIconify) _glfwPlatformIconifyWindow(window);
 
             _glfwInputWindowFocus(window, false);
+            PostMessageW(hWnd, WM_KITTY_RESTORE_FOCUS, 0, 0);
+            return 0;
+        }
+
+        case WM_KITTY_RESTORE_FOCUS: {
+            if (isWSLgFocusWindow(GetForegroundWindow())) _glfwPlatformFocusWindow(window);
             return 0;
         }
 
