@@ -1,1 +1,1 @@
-file://C:/Users/Administrator/screenshots/SKILL.md
+file://C:/Users/Administrator/repos/kitty/.agents/skills/testing-windows-installer/SKILL.md
