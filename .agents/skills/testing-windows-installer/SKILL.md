@@ -1,0 +1,1 @@
+file://C:/Users/Administrator/screenshots/SKILL.md
