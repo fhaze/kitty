@@ -33,4 +33,5 @@ terminfo/x/* linguist-generated=true
 *.py  text diff=python
 *.m  text diff=objc
 *.go text diff=go
+shell-integration/** text eol=lf
 windows/wsl/*.sh text eol=lf
