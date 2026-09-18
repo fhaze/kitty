@@ -1908,13 +1908,95 @@ def bundle_conpty(launcher_dir: str) -> None:
 
 
 def create_windows_zip(ddir: str) -> str:
-    machine = platform.machine().lower()
-    arch = {'amd64': 'x86_64', 'x86_64': 'x86_64', 'arm64': 'arm64', 'aarch64': 'arm64'}.get(machine, machine)
+    arch = windows_package_arch()
     ver = '.'.join(map(str, version))
     base_name = os.path.join(os.path.dirname(os.path.abspath(ddir)), f'kitty-{ver}-windows-{arch}')
     ans = shutil.make_archive(base_name, 'zip', root_dir=os.path.dirname(os.path.abspath(ddir)), base_dir=os.path.basename(ddir))
     print(f'Created {emphasis(os.path.relpath(ans))}')
     return ans
+
+
+def windows_package_arch() -> str:
+    machine = platform.machine().lower()
+    return {'amd64': 'x86_64', 'x86_64': 'x86_64', 'arm64': 'arm64', 'aarch64': 'arm64'}.get(machine, machine)
+
+
+def find_iscc() -> str:
+    ans = os.environ.get('ISCC') or shutil.which('iscc') or shutil.which('ISCC.exe')
+    if ans:
+        return ans
+    # MSYS2 shells drop environment variables such as ProgramFiles(x86), so also try the default locations
+    drive = os.environ.get('SystemDrive', 'C:')
+    candidates = [
+        os.path.join(base, sub, 'ISCC.exe')
+        for base in filter(
+            None,
+            (
+                os.environ.get('ProgramFiles(x86)'),
+                os.environ.get('ProgramFiles'),
+                f'{drive}\\Program Files (x86)',
+                f'{drive}\\Program Files',
+                f'{drive}\\ProgramData\\chocolatey\\lib\\InnoSetup\\tools',
+            ),
+        )
+        for sub in ('Inno Setup 6', '')
+    ]
+    if localappdata := os.environ.get('LOCALAPPDATA'):
+        candidates.append(os.path.join(localappdata, 'Programs', 'Inno Setup 6', 'ISCC.exe'))
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return ''
+
+
+def create_windows_installer(ddir: str, required: bool = False) -> str:
+    # Inno Setup, https://jrsoftware.org/isinfo.php is pre-installed on the GitHub Actions Windows runners
+    iscc = find_iscc()
+    if not iscc:
+        msg = 'ISCC.exe (Inno Setup 6) not found, set the ISCC environment variable to its path'
+        if required:
+            raise SystemExit(msg)
+        print(f'{msg}. Skipping creation of the installer', file=sys.stderr)
+        return ''
+    arch = windows_package_arch()
+    ver = '.'.join(map(str, version))
+    outdir = os.path.dirname(os.path.abspath(ddir))
+    cmd = [
+        iscc,
+        '/Qp',
+        f'/DAppVersion={ver}',
+        f'/DArch={arch}',
+        f'/DSourceDir={os.path.abspath(ddir)}',
+        f'/DOutputDir={outdir}',
+    ]
+    if repo := os.environ.get('GITHUB_REPOSITORY'):
+        cmd.append(f'/DAppURL=https://github.com/{repo}')
+    cmd.append(os.path.join(src_base, 'windows', 'kitty.iss'))
+    if verbose:
+        print(shlex.join(cmd))
+    cp = subprocess.run(cmd)
+    if cp.returncode != 0:
+        raise SystemExit(f'Inno Setup failed with exit code {cp.returncode}')
+    ans = os.path.join(outdir, f'kitty-{ver}-windows-{arch}-setup.exe')
+    if not os.path.exists(ans):
+        raise SystemExit(f'Inno Setup did not create {ans}')
+    print(f'Created {emphasis(os.path.relpath(ans))}')
+    return ans
+
+
+# Linux kitten binaries for WSL, installed into the distributions by kitty +wsl-setup
+wsl_kitten_arches = ('amd64', 'arm64')
+
+
+def bundle_wsl_kittens(args: Options, libdir: str) -> None:
+    dest = os.path.join(libdir, 'windows', 'wsl')
+    safe_makedirs(dest)
+    shutil.copy2(os.path.join('windows', 'wsl', 'install-kitten.sh'), dest)
+    if args.skip_building_kitten:
+        return
+    for arch in wsl_kitten_arches:
+        print('Cross compiling static kitten for WSL:', arch)
+        build_static_kittens(args, launcher_dir=dest, destination_dir=dest, for_platform=('linux', arch))
 
 
 def copy_man_pages(ddir: str) -> None:
@@ -2435,7 +2517,9 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
     if bundle_type.startswith('macos-'):
         create_macos_bundle_gunk(ddir, for_freeze, args)
     elif bundle_type == 'windows-package':
+        bundle_wsl_kittens(args, libdir)
         create_windows_zip(ddir)
+        create_windows_installer(ddir, required=bool(os.environ.get('CI')))
 
 
 # }}}
