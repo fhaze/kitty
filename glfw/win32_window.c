@@ -103,6 +103,33 @@ to_lower_codepoint(uint32_t ch) {
     return ch;
 }
 
+static bool
+is_ignored_system_key(UINT vk) {
+    switch (vk) {
+        case VK_BROWSER_BACK:
+        case VK_BROWSER_FORWARD:
+        case VK_BROWSER_REFRESH:
+        case VK_BROWSER_STOP:
+        case VK_BROWSER_SEARCH:
+        case VK_BROWSER_FAVORITES:
+        case VK_BROWSER_HOME:
+        case VK_VOLUME_MUTE:
+        case VK_VOLUME_DOWN:
+        case VK_VOLUME_UP:
+        case VK_MEDIA_NEXT_TRACK:
+        case VK_MEDIA_PREV_TRACK:
+        case VK_MEDIA_STOP:
+        case VK_MEDIA_PLAY_PAUSE:
+        case VK_LAUNCH_MAIL:
+        case VK_LAUNCH_MEDIA_SELECT:
+        case VK_LAUNCH_APP1:
+        case VK_LAUNCH_APP2:
+        case VK_SNAPSHOT:
+        case VK_SLEEP: return true;
+        default: return false;
+    }
+}
+
 // Translate a virtual key to the unicode character it produces with the given
 // modifier state, without disturbing the keyboard layout's dead key state.
 static uint32_t
@@ -360,6 +387,7 @@ handle_key_message(_GLFWwindow *window, UINT uMsg, WPARAM wParam, LPARAM lParam)
     int mods = getKeyMods();
     UINT vk = (UINT)wParam;
     int scancode = (HIWORD(lParam) & (KF_EXTENDED | 0xff));
+    if (is_ignored_system_key(vk)) return;
     if (!scancode) {
         // NOTE: Some synthetic key messages have a scancode of zero
         // HACK: Map the virtual key back to a usable scancode
@@ -448,13 +476,6 @@ handle_key_message(_GLFWwindow *window, UINT uMsg, WPARAM wParam, LPARAM lParam)
         other.native_key_id = other.native_key;
         _glfwInputKeyboard(window, &ev);
         _glfwInputKeyboard(window, &other);
-    } else if (vk == VK_SNAPSHOT) {
-        // HACK: Key down is not reported for the Print Screen key
-        ev.action = GLFW_PRESS;
-        _glfwInputKeyboard(window, &ev);
-        ev.action = GLFW_RELEASE;
-        ev.text = NULL;
-        _glfwInputKeyboard(window, &ev);
     } else {
         _glfwInputKeyboard(window, &ev);
     }
