@@ -16,6 +16,7 @@ import (
 	"github.com/kovidgoyal/go-shm"
 	"github.com/kovidgoyal/kitty/tools/cli"
 	"github.com/kovidgoyal/kitty/tools/tty"
+	"github.com/kovidgoyal/kitty/tools/tui"
 )
 
 var _ = fmt.Print
@@ -26,12 +27,19 @@ func fatal(err error) int {
 }
 
 func trigger_ask(name string) int {
+	dcs, err := tui.KittyDCS("ask", name)
+	if err != nil {
+		return fatal(err)
+	}
+	if dcs == "" {
+		return 0
+	}
 	term, err := tty.OpenControllingTerm()
 	if err != nil {
 		return fatal(err)
 	}
 	defer term.Close()
-	_, err = term.WriteString("\x1bP@kitty-ask|" + name + "\x1b\\")
+	_, err = term.WriteString(dcs)
 	if err != nil {
 		return fatal(err)
 	}

@@ -1767,6 +1767,30 @@ class Window:
         else:
             log_error(f'Invalid echo message received from client: {data!r}')
 
+    def handle_kitty_dcs(self, dcs: bytes) -> bool:
+        # Dispatch a @kitty-* DCS payload received out of band, mirrors parse_kitty_dcs() in vt-parser.c
+        prefix = b'@kitty-'
+        if not dcs.startswith(prefix):
+            return False
+        dispatch_table: tuple[tuple[bytes, Callable[[memoryview], None], int], ...] = (
+            (b'cmd{', self.handle_remote_cmd, 1),
+            (b'overlay-ready|', self.handle_overlay_ready, 0),
+            (b'kitten-result|', self.handle_kitten_result, 0),
+            (b'print|', self.handle_remote_print, 0),
+            (b'echo|', self.handle_remote_echo, 0),
+            (b'ssh|', self.handle_remote_ssh, 0),
+            (b'ask|', self.handle_remote_askpass, 0),
+            (b'clone|', self.handle_remote_clone, 0),
+            (b'edit|', self.handle_remote_edit, 0),
+            (b'restore-cursor-appearance|', self.handle_restore_cursor_appearance, 0),
+        )
+        body = memoryview(dcs)[len(prefix) :]
+        for p, handler, delta in dispatch_table:
+            if body[: len(p)] == p:
+                handler(body[len(p) - delta :])
+                return True
+        return False
+
     def handle_remote_ssh(self, msg: memoryview) -> None:
         from kittens.ssh.utils import get_ssh_data
 

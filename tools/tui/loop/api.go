@@ -526,6 +526,10 @@ func (self *Loop) ClearScreenButNotGraphics() {
 }
 
 func (self *Loop) SendOverlayReady() {
+	if utils.DCSChannelAddress() != "" {
+		_ = utils.SendDCSViaChannel("overlay-ready", "")
+		return
+	}
 	self.QueueWriteString("\x1bP@kitty-overlay-ready|\x1b\\")
 }
 

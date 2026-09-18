@@ -454,6 +454,12 @@ class Child:
             env['KITTY_LISTEN_ON'] = boss.listening_on
         else:
             env.pop('KITTY_LISTEN_ON', None)
+        if boss.dcs_channel_address:
+            env['KITTY_DCS_CHANNEL'] = boss.dcs_channel_address
+            env['KITTY_DCS_CHANNEL_TOKEN'] = boss.dcs_channel_token
+        else:
+            env.pop('KITTY_DCS_CHANNEL', None)
+            env.pop('KITTY_DCS_CHANNEL_TOKEN', None)
         env.pop('KITTY_STDIO_FORWARDED', None)
         if self.cwd:
             # needed in case cwd is a symlink, in which case shells
