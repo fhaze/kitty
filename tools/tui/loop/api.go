@@ -75,7 +75,10 @@ type Loop struct {
 	}
 
 	// Queried capabilities from terminal
-	TerminalCapabilities TerminalCapabilities
+	TerminalCapabilities              TerminalCapabilities
+	capabilities_query_pending        bool
+	capabilities_da_response_received bool
+	capabilities_timeout_timer_id     IdType
 
 	// Suspend the loop restoring terminal state, and run the provided function. When it returns terminal state is
 	// put back to what it was before suspending unless the function returns an error or an error occurs saving/restoring state.
@@ -612,6 +615,13 @@ func (self *Loop) CurrentPointerShape() (ans PointerShape, has_shape bool) {
 // callback will be called once the query response is received. This
 // function should be called as early as possible ideally in OnInitialize.
 func (self *Loop) QueryCapabilities() {
+	if self.capabilities_timeout_timer_id != 0 {
+		self.RemoveTimer(self.capabilities_timeout_timer_id)
+	}
+	self.TerminalCapabilities = TerminalCapabilities{}
+	self.capabilities_query_pending = true
+	self.capabilities_da_response_received = false
+	self.capabilities_timeout_timer_id = 0
 	self.QueueWriteString("\x1b[?u\x1b[?996n\x1b[c")
 }
 

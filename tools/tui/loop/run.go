@@ -121,16 +121,17 @@ func (self *Loop) handle_csi(raw []byte) (err error) {
 		return nil
 	case 'c':
 		if strings.HasPrefix(csi, "?") {
-			if self.OnCapabilitiesReceived != nil {
-				if err = self.OnCapabilitiesReceived(self.TerminalCapabilities); err != nil {
-					return err
-				}
+			if err = self.handle_capabilities_da_response(); err != nil {
+				return err
 			}
 		}
 	case 'u':
 		if strings.HasPrefix(csi, "?") {
 			self.TerminalCapabilities.KeyboardProtocol = true
 			self.TerminalCapabilities.KeyboardProtocolResponseReceived = true
+			if self.capabilities_query_pending && self.capabilities_da_response_received {
+				return self.finish_capabilities_query()
+			}
 		}
 	case 'n':
 		if strings.HasPrefix(csi, "?997;") {
