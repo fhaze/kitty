@@ -43,7 +43,7 @@ choices_for_underline_hyperlinks = typing.Literal['hover', 'always', 'never']
 choices_for_window_logo_position = choices_for_placement_strategy
 choices_for_window_title_bar = typing.Literal['top', 'bottom']
 choices_for_window_title_bar_align = typing.Literal['left', 'center', 'right']
-choices_for_windows_blur_mode = typing.Literal['blur', 'acrylic']
+choices_for_windows_blur_mode = typing.Literal['blur', 'acrylic', 'mica']
 
 option_names = (
     'action_alias',

@@ -1608,7 +1608,7 @@ class Parser:
             raise ValueError(f"The value {val} is not a valid choice for windows_blur_mode")
         ans["windows_blur_mode"] = val
 
-    choices_for_windows_blur_mode = frozenset(('blur', 'acrylic'))
+    choices_for_windows_blur_mode = frozenset(('blur', 'acrylic', 'mica'))
 
     def x11_hide_window_decorations(self, val: str, ans: dict[str, typing.Any]) -> None:
         deprecated_hide_window_decorations_aliases('x11_hide_window_decorations', val, ans)

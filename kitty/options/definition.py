@@ -3555,7 +3555,7 @@ config is not supported.
 opt(
     'windows_blur_mode',
     'blur',
-    choices=('blur', 'acrylic'),
+    choices=('blur', 'acrylic', 'mica'),
     ctype='windows_blur_mode',
     long_text="""
 The type of blur used for :opt:`background_blur` on Windows.
@@ -3568,6 +3568,18 @@ The type of blur used for :opt:`background_blur` on Windows.
     is the heavier frosted-glass acrylic material. Note that Windows only
     renders the acrylic backdrop while the window is focused, so transparency
     is lost as soon as the window loses focus.
+
+:code:`mica`
+    uses the desktop wallpaper and Windows theme to create an opaque backdrop,
+    rather than blurring windows behind the terminal. It applies to the whole
+    window, including the native title bar. Requires Windows 11 22H2 (build
+    22621) or newer; falls back to plain blur if the backdrop is unavailable.
+    Windows uses a solid fallback when the window is inactive or system settings
+    disable the material.
+
+All modes require :opt:`background_blur` greater than zero and
+:opt:`background_opacity` less than one. With Mica, the opacity controls how
+much of the wallpaper-based material shows through the terminal background.
 
 Changing this option by reloading the config is not supported, it only
 applies to newly created OS windows.

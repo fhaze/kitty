@@ -812,6 +812,15 @@ updateFramebufferTransparency(const _GLFWwindow *window) {
 
     if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition) return;
 
+    if (window->win32.mica_active) {
+        // Mica supplies the client-area backdrop through the extended frame.
+        // The legacy blur region used for desktop transparency competes with it.
+        DWM_BLURBEHIND bb = {0};
+        bb.dwFlags = DWM_BB_ENABLE;
+        DwmEnableBlurBehindWindow(window->win32.handle, &bb);
+        return;
+    }
+
     if (IsWindows8OrGreater() || (SUCCEEDED(DwmGetColorizationColor(&color, &opaque)) && !opaque)) {
         HRGN region = CreateRectRgn(0, 0, -1, -1);
         DWM_BLURBEHIND bb = {0};
@@ -1370,6 +1379,8 @@ windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         case WM_DWMCOMPOSITIONCHANGED:
         case WM_DWMCOLORIZATIONCOLORCHANGED: {
             if (window->win32.transparent) updateFramebufferTransparency(window);
+            if (uMsg == WM_DWMCOMPOSITIONCHANGED && window->win32.blur_mode == GLFW_WIN32_BLUR_MICA)
+                _glfwPlatformSetWindowBlur(window, window->win32.blur_radius);
             return 0;
         }
 
@@ -2583,26 +2594,61 @@ _glfwPlatformSetWindowBlur(_GLFWwindow *window, int blur_radius) {
     window->win32.blur_radius = blur_radius;
     const bool want_blur = blur_radius > 0;
     const bool acrylic = want_blur && window->win32.blur_mode == GLFW_WIN32_BLUR_ACRYLIC;
-    // The DWM system backdrop (acrylic) and the SetWindowCompositionAttribute
-    // accent policy (blur-behind) fight each other, so always disable the
-    // mode that is not in use. DWMWA_SYSTEMBACKDROP_TYPE = 38,
-    // DWMSBT_NONE = 1, DWMSBT_TRANSIENTWINDOW (acrylic) = 3. Note that the
-    // acrylic backdrop is stripped by DWM whenever the window loses focus.
-    if (_glfw.win32.dwmapi.SetWindowAttribute) {
-        DWORD backdrop = acrylic ? 3 : 1;
-        DwmSetWindowAttribute(window->win32.handle, 38, &backdrop, sizeof(backdrop));
-    }
+    const bool mica = want_blur && window->win32.blur_mode == GLFW_WIN32_BLUR_MICA;
+    bool system_backdrop = false;
     PFN_SetWindowCompositionAttribute swca = NULL;
     glfw_dlsym(swca, GetModuleHandleW(L"user32.dll"), "SetWindowCompositionAttribute");
-    if (!swca) return acrylic ? blur_radius : 0;
+    // Clear the legacy accent BEFORE selecting the system backdrop. Clearing it
+    // afterwards can overwrite the client-area composition setup.
+    if ((mica || acrylic) && swca) {
+        GLFW_ACCENT_POLICY policy = {0};
+        GLFW_WINCOMPATTRDATA data = {19 /* WCA_ACCENT_POLICY */, &policy, sizeof(policy)};
+        swca(window->win32.handle, &data);
+    }
+    const bool was_mica = window->win32.mica_active;
+    window->win32.mica_active = mica;
+    if (window->win32.transparent && (mica || was_mica)) updateFramebufferTransparency(window);
+    // The DWM system backdrop and the SetWindowCompositionAttribute
+    // accent policy (blur-behind) fight each other, so always disable the
+    // mode that is not in use. DWMSBT_NONE = 1, DWMSBT_MAINWINDOW (mica) = 2,
+    // DWMSBT_TRANSIENTWINDOW (acrylic) = 3. Fall back to plain blur when the
+    // requested system backdrop is unsupported or rejected by DWM.
+    if (_glfw.win32.dwmapi.SetWindowAttribute && _glfwIsWindows10BuildOrGreaterWin32(22621)) {
+        DWORD backdrop = mica ? 2 : acrylic ? 3 : 1;
+        HRESULT result = S_OK;
+        if (mica) {
+            // Extend the frame into the client area so the OpenGL surface can
+            // blend over Mica, instead of only showing it in the title bar.
+            const MARGINS margins = {-1, -1, -1, -1};
+            result = _glfw.win32.dwmapi.ExtendFrameIntoClientArea ?
+                DwmExtendFrameIntoClientArea(window->win32.handle, &margins) : E_NOTIMPL;
+        }
+        if (SUCCEEDED(result)) result = DwmSetWindowAttribute(window->win32.handle, DWMWA_SYSTEMBACKDROP_TYPE, &backdrop, sizeof(backdrop));
+        system_backdrop = (mica || acrylic) && SUCCEEDED(result);
+        if (FAILED(result) && (mica || acrylic)) {
+            backdrop = 1;
+            DwmSetWindowAttribute(window->win32.handle, DWMWA_SYSTEMBACKDROP_TYPE, &backdrop, sizeof(backdrop));
+        }
+    }
+    if (window->win32.blur_mode == GLFW_WIN32_BLUR_MICA && !system_backdrop && _glfw.win32.dwmapi.ExtendFrameIntoClientArea) {
+        // Restore the normal client area when Mica is disabled or unavailable.
+        const MARGINS margins = {0, 0, 0, 0};
+        DwmExtendFrameIntoClientArea(window->win32.handle, &margins);
+    }
+    if (mica && !system_backdrop) {
+        window->win32.mica_active = false;
+        if (window->win32.transparent) updateFramebufferTransparency(window);
+    }
+    if (system_backdrop) return blur_radius;
+    if (!swca) return 0;
     // ACCENT_DISABLED = 0, ACCENT_ENABLE_BLURBEHIND = 3. Acrylic (4) renders
     // opaque over the app's per-pixel alpha on Windows 11 22H2+, while plain
     // blur-behind composes correctly with background_opacity. AccentFlags
     // must be 0: flag 2 draws a solid GradientColor overlay that makes the
     // window opaque.
-    GLFW_ACCENT_POLICY policy = {(want_blur && !acrylic) ? 3 : 0, 0, 0, 0};
+    GLFW_ACCENT_POLICY policy = {want_blur ? 3 : 0, 0, 0, 0};
     GLFW_WINCOMPATTRDATA data = {19 /* WCA_ACCENT_POLICY */, &policy, sizeof(policy)};
-    if (!swca(window->win32.handle, &data)) return acrylic ? blur_radius : 0;
+    if (!swca(window->win32.handle, &data)) return 0;
     return want_blur ? blur_radius : 0;
 }
 

@@ -123,8 +123,9 @@ undercurl_style(PyObject *x) {
 static inline int
 windows_blur_mode(PyObject *x) {
     const char *in = PyUnicode_AsUTF8(x);
-    // values of GLFW_WIN32_BLUR_ACRYLIC / GLFW_WIN32_BLUR_BLURBEHIND
+    // Keep in sync with the GLFW_WIN32_BLUR_* constants.
     if (in && strcmp(in, "acrylic") == 0) return 1;
+    if (in && strcmp(in, "mica") == 0) return 2;
     return 0;
 }
 

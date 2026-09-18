@@ -92,6 +92,7 @@ loadLibraries(void) {
         glfw_dlsym(_glfw.win32.dwmapi.IsCompositionEnabled, _glfw.win32.dwmapi.instance, "DwmIsCompositionEnabled");
         glfw_dlsym(_glfw.win32.dwmapi.Flush, _glfw.win32.dwmapi.instance, "DwmFlush");
         glfw_dlsym(_glfw.win32.dwmapi.EnableBlurBehindWindow, _glfw.win32.dwmapi.instance, "DwmEnableBlurBehindWindow");
+        glfw_dlsym(_glfw.win32.dwmapi.ExtendFrameIntoClientArea, _glfw.win32.dwmapi.instance, "DwmExtendFrameIntoClientArea");
         glfw_dlsym(_glfw.win32.dwmapi.GetColorizationColor, _glfw.win32.dwmapi.instance, "DwmGetColorizationColor");
         glfw_dlsym(_glfw.win32.dwmapi.SetWindowAttribute, _glfw.win32.dwmapi.instance, "DwmSetWindowAttribute");
     }

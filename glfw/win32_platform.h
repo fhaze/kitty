@@ -166,11 +166,13 @@ typedef int(WINAPI *PFN_GetSystemMetricsForDpi)(int, UINT);
 typedef HRESULT(WINAPI *PFN_DwmIsCompositionEnabled)(BOOL *);
 typedef HRESULT(WINAPI *PFN_DwmFlush)(VOID);
 typedef HRESULT(WINAPI *PFN_DwmEnableBlurBehindWindow)(HWND, const DWM_BLURBEHIND *);
+typedef HRESULT(WINAPI *PFN_DwmExtendFrameIntoClientArea)(HWND, const MARGINS *);
 typedef HRESULT(WINAPI *PFN_DwmGetColorizationColor)(DWORD *, BOOL *);
 typedef HRESULT(WINAPI *PFN_DwmSetWindowAttribute)(HWND, DWORD, LPCVOID, DWORD);
 #define DwmIsCompositionEnabled _glfw.win32.dwmapi.IsCompositionEnabled
 #define DwmFlush _glfw.win32.dwmapi.Flush
 #define DwmEnableBlurBehindWindow _glfw.win32.dwmapi.EnableBlurBehindWindow
+#define DwmExtendFrameIntoClientArea _glfw.win32.dwmapi.ExtendFrameIntoClientArea
 #define DwmGetColorizationColor _glfw.win32.dwmapi.GetColorizationColor
 #define DwmSetWindowAttribute _glfw.win32.dwmapi.SetWindowAttribute
 
@@ -246,6 +248,7 @@ typedef struct _GLFWwindowWin32 {
     bool live_resize_in_progress;
     int blur_radius;
     int blur_mode;
+    bool mica_active;
 
     // Cached size used to filter out duplicate events
     int width, height;
@@ -331,6 +334,7 @@ typedef struct _GLFWlibraryWin32 {
         PFN_DwmIsCompositionEnabled IsCompositionEnabled;
         PFN_DwmFlush Flush;
         PFN_DwmEnableBlurBehindWindow EnableBlurBehindWindow;
+        PFN_DwmExtendFrameIntoClientArea ExtendFrameIntoClientArea;
         PFN_DwmGetColorizationColor GetColorizationColor;
         PFN_DwmSetWindowAttribute SetWindowAttribute;
     } dwmapi;
