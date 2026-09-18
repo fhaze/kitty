@@ -50,6 +50,9 @@ from .fast_data_types import timed_debug_print as _timed_debug_print
 from .types import run_once
 from .typing_compat import AddressFamily, PopenType, StartupCtx
 
+if sys.platform == 'win32':
+    from os import startfile as open_with_default_app
+
 if TYPE_CHECKING:
     import tarfile
 
@@ -276,7 +279,14 @@ def open_cmd(
     )
 
 
-def open_url(url: str | list[str], program: str | list[str] = 'default', cwd: str | None = None, extra_env: dict[str, str] | None = None) -> 'PopenType[bytes]':
+def open_url(
+    url: str | list[str], program: str | list[str] = 'default', cwd: str | None = None, extra_env: dict[str, str] | None = None
+) -> 'PopenType[bytes] | None':
+    if sys.platform == 'win32' and program in ('default', ['default']):
+        urls = (url,) if isinstance(url, str) else url
+        for item in urls:
+            open_with_default_app(item, cwd=cwd)
+        return None
     return open_cmd(command_for_open(program), url, cwd=cwd, extra_env=extra_env)
 
 

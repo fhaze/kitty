@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 
 from kitty.constants import is_macos, kitty_exe, read_kitty_resource
 from kitty.fast_data_types import (
@@ -65,6 +66,24 @@ def create_lbuf(*lines):
 
 
 class TestDataTypes(BaseTest):
+    def test_open_url(self):
+        from kitty import utils
+
+        with patch('kitty.utils.sys.platform', 'win32'), patch('kitty.utils.open_with_default_app', create=True) as startfile:
+            self.assertIsNone(utils.open_url(['https://example.com', 'https://example.org'], cwd='C:\\'))
+            self.ae(
+                [
+                    (('https://example.com',), {'cwd': 'C:\\'}),
+                    (('https://example.org',), {'cwd': 'C:\\'}),
+                ],
+                startfile.call_args_list,
+            )
+
+        sentinel = object()
+        with patch('kitty.utils.sys.platform', 'win32'), patch('kitty.utils.open_cmd', return_value=sentinel) as opener:
+            self.assertIs(sentinel, utils.open_url('https://example.com', ['browser']))
+            opener.assert_called_once_with(['browser'], 'https://example.com', cwd=None, extra_env=None)
+
     def test_replace_c0_codes(self):
         def t(x: str, expected: str):
             q = replace_c0_codes_except_nl_space_tab(x)

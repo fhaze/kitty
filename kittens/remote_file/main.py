@@ -5,7 +5,7 @@
 import sys
 
 from kitty.typing_compat import BossType
-from kitty.utils import command_for_open, open_cmd
+from kitty.utils import open_url
 
 from ..tui.handler import result_handler
 
@@ -47,8 +47,7 @@ def handle_result(args: list[str], data: str | None, target_window_id: int, boss
     if data:
         from kitty.fast_data_types import get_options
 
-        cmd = command_for_open(get_options().open_url_with)
-        open_cmd(cmd, data)
+        open_url(data, get_options().open_url_with)
 
 
 if __name__ == '__main__':
