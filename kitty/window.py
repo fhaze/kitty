@@ -33,6 +33,7 @@ from .constants import (
     config_dir,
     helper_process_popen_kwargs,
     is_macos,
+    is_windows,
     kitten_exe,
     unserialize_launch_flag,
     wakeup_io_loop,
@@ -923,7 +924,11 @@ class Window:
 
     @property
     def has_running_program(self) -> bool:
-        return not self.at_prompt
+        if self.at_prompt:
+            return False
+        if is_windows and self.child.is_default_shell:
+            return self.child.pid_for_cwd != self.child.pid
+        return True
 
     def matches(self, field: str, pat: MatchPatternType, active_session: str, most_recent_session: str) -> bool:
         if isinstance(pat, tuple):
