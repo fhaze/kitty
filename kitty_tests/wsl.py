@@ -9,7 +9,7 @@ import tempfile
 from unittest.mock import patch
 
 from kitty.constants import is_windows, kitty_base_dir
-from kitty.wsl import decode_wsl_output, install_script, main, parse_distro_list, wsl_command
+from kitty.wsl import decode_wsl_output, install_script, main, parse_distro_list, run_in_distro, wsl_command
 
 from .base import BaseTest
 
@@ -52,6 +52,22 @@ class WSLTest(BaseTest):
                 main(['wsl-setup', 'broken'])
             with self.assertRaises(SystemExit):
                 main(['wsl-setup', '--bad-option'])
+
+    def test_run_in_distro_normalizes_script_line_endings(self):
+        tdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tdir)
+        script_path = os.path.join(tdir, 'install-kitten.sh')
+        with open(script_path, 'wb') as f:
+            f.write(b'line one\r\nline two\r\n')
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append((cmd, kwargs))
+            return subprocess.CompletedProcess(cmd, 0, b'', b'')
+
+        with patch('kitty.wsl.install_script', script_path), patch('kitty.wsl.subprocess.run', fake_run):
+            self.assertTrue(run_in_distro('Ubuntu'))
+        self.ae(calls[0][1]['input'], b'line one\nline two\n')
 
     def test_install_script(self):
         # Runs windows/wsl/install-kitten.sh the way kitty +wsl-setup does inside a distribution

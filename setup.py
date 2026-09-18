@@ -2424,6 +2424,17 @@ def create_macos_bundle_gunk(dest: str, for_freeze: bool, args: Options) -> str:
     return str(kitty_exe)
 
 
+def copy_shell_integration(dest: str, normalize_line_endings: bool = False) -> None:
+    shutil.copytree('shell-integration', dest, dirs_exist_ok=True)
+    if normalize_line_endings:
+        for path in Path(dest).rglob('*'):
+            if path.is_file():
+                raw = path.read_bytes()
+                normalized = raw.replace(b'\r\n', b'\n')
+                if normalized != raw:
+                    path.write_bytes(normalized)
+
+
 def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
     ddir = args.prefix
     for_freeze = bundle_type.endswith('-freeze')
@@ -2452,7 +2463,7 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
     shutil.copy2('logo/kitty.png', os.path.join(libdir, 'logo'))
     shutil.copy2('logo/beam-cursor.png', os.path.join(libdir, 'logo'))
     shutil.copy2('logo/beam-cursor@2x.png', os.path.join(libdir, 'logo'))
-    shutil.copytree('shell-integration', os.path.join(libdir, 'shell-integration'), dirs_exist_ok=True)
+    copy_shell_integration(os.path.join(libdir, 'shell-integration'), bundle_type == 'windows-package')
     shutil.copytree('fonts', os.path.join(libdir, 'fonts'), dirs_exist_ok=True)
     allowed_extensions = frozenset('py slang glsl so pyd'.split())
 

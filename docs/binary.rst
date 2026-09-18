@@ -97,6 +97,16 @@ editing shell startup files::
 block again, the Windows uninstaller does this automatically when the WSL task
 was selected.
 
+To start kitty directly in the default WSL distribution, add this to
+:file:`kitty.conf`::
+
+    shell wsl.exe --cd ~ --exec ./.local/bin/kitten run-shell
+
+This starts in the WSL user's home directory and uses the installed
+:program:`kitten` to enable shell integration. To always use a particular
+distribution, add ``--distribution Ubuntu`` before ``--cd``. Without the WSL
+:program:`kitten` setup, use ``shell wsl.exe --cd ~`` instead.
+
 
 Desktop integration on Linux
 --------------------------------

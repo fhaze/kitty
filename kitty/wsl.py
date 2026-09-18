@@ -81,7 +81,7 @@ def run_in_distro(distro: str, uninstall: bool = False, update_path: bool = True
             script_args.append('--no-path')
         script_args.append(wsl_dir)
     with open(install_script, 'rb') as f:
-        script = f.read()
+        script = f.read().replace(b'\r\n', b'\n')
     try:
         cp = subprocess.run(wsl_command(distro, script_args), input=script, capture_output=True, timeout=distro_timeout, **helper_process_popen_kwargs())
     except subprocess.TimeoutExpired:
