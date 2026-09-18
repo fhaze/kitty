@@ -181,6 +181,9 @@ func (self *TerminalStateOptions) ResetStateEscapeCodes() string {
 	if self.kitty_keyboard_mode != NO_KEYBOARD_STATE_CHANGE {
 		sb.WriteString("\033[<u")
 	}
+	if self.focus_tracking {
+		reset_modes(&sb, FOCUS_TRACKING)
+	}
 	if self.Alternate_screen {
 		sb.WriteString(ALTERNATE_SCREEN.EscapeCodeToReset())
 	} else {
