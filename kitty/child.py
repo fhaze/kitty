@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # License: GPL v3 Copyright: 2016, Kovid Goyal <kovid at kovidgoyal.net>
 
+import ntpath
 import os
 import sys
 from collections import defaultdict
@@ -427,6 +428,9 @@ class Child:
         self.startup_command_via_shell_integration = startup_command_via_shell_integration
         self.final_env: dict[str, str] = {}
         self.is_default_shell = bool(self.argv and self.argv[0] == shell_path)
+        path_module = ntpath if is_windows else os.path
+        shell_name = os.path.splitext(path_module.basename(self.argv[0]))[0].casefold() if self.argv else ''
+        self.is_shell = self.is_default_shell or (is_windows and shell_name in {'cmd', 'powershell', 'pwsh'})
         self.should_run_via_run_shell_kitten = is_macos and self.is_default_shell
         self.hold = hold
 

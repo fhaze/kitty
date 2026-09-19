@@ -926,7 +926,7 @@ class Window:
     def has_running_program(self) -> bool:
         if self.at_prompt:
             return False
-        if is_windows and self.child.is_default_shell:
+        if is_windows and self.child.is_shell:
             return self.child.pid_for_cwd != self.child.pid
         return True
 

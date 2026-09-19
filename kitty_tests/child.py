@@ -6,7 +6,7 @@ import subprocess
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from kitty.child import add_kitty_vars_to_wslenv, memory_used_by_process_tree_rooted_at
+from kitty.child import Child, add_kitty_vars_to_wslenv, memory_used_by_process_tree_rooted_at
 from kitty.constants import is_macos, kitty_exe
 from kitty.window import Window
 
@@ -14,14 +14,21 @@ from .base import BaseTest
 
 
 class ChildMemoryTest(BaseTest):
+    def test_windows_shell_detection(self):
+        with patch('kitty.child.is_windows', True):
+            for executable in ('cmd.exe', r'C:\Program Files\PowerShell\7\pwsh.exe', 'powershell.exe'):
+                with self.subTest(executable=executable):
+                    self.assertTrue(Child([executable], '').is_shell)
+            self.assertFalse(Child(['python.exe'], '').is_shell)
+
     def test_windows_default_shell_running_program_detection(self):
-        child = SimpleNamespace(is_default_shell=True, pid=12, pid_for_cwd=12)
+        child = SimpleNamespace(is_shell=True, pid=12, pid_for_cwd=12)
         window = SimpleNamespace(at_prompt=False, child=child)
         with patch('kitty.window.is_windows', True):
             self.assertFalse(Window.has_running_program.fget(window))
             child.pid_for_cwd = 13
             self.assertTrue(Window.has_running_program.fget(window))
-            child.is_default_shell = False
+            child.is_shell = False
             child.pid_for_cwd = child.pid
             self.assertTrue(Window.has_running_program.fget(window))
 
