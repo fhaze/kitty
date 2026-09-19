@@ -148,6 +148,61 @@ def setup_bash_env(env: dict[str, str], argv: list[str]) -> None:
     argv.insert(1, '--posix')
 
 
+def powershell_str_literal(x: str) -> str:
+    return "'" + x.replace("'", "''") + "'"
+
+
+def setup_powershell_env(env: dict[str, str], argv: list[str]) -> None:
+    options_with_values = {
+        '-configurationname',
+        '-custompipename',
+        '-executionpolicy',
+        '-inputformat',
+        '-outputformat',
+        '-settingsfile',
+        '-workingdirectory',
+    }
+    non_interactive_options = {
+        '-?',
+        '-c',
+        '-command',
+        '-commandwithargs',
+        '-e',
+        '-ec',
+        '-encodedcommand',
+        '-f',
+        '-file',
+        '-h',
+        '-help',
+        '-noni',
+        '-noninteractive',
+        '-servermode',
+        '-sshservermode',
+        '-v',
+        '-version',
+        '/?',
+    }
+    expecting_value = False
+    has_no_exit = False
+    for arg in argv[1:]:
+        if expecting_value:
+            expecting_value = False
+            continue
+        opt = arg.casefold()
+        if opt in non_interactive_options or not opt.startswith(('-', '/')):
+            return
+        if opt in options_with_values:
+            expecting_value = True
+        elif opt == '-noexit':
+            has_no_exit = True
+    if expecting_value:
+        return
+    if not has_no_exit:
+        argv.append('-NoExit')
+    script = os.path.join(shell_integration_dir, 'powershell', 'kitty-integration.ps1')
+    argv.extend(('-Command', f'. {powershell_str_literal(script)}'))
+
+
 def as_str_literal(x: str) -> str:
     parts = x.split("'")
     return '"\'"'.join(f"'{x}'" for x in parts)
@@ -172,25 +227,33 @@ def fish_serialize_env(env: dict[str, str]) -> str:
     return '\n'.join(ans)
 
 
+def powershell_serialize_env(env: dict[str, str]) -> str:
+    return '\n'.join(f'[Environment]::SetEnvironmentVariable({powershell_str_literal(k)}, {powershell_str_literal(v)})' for k, v in env.items())
+
+
 ENV_MODIFIERS = {
     'fish': setup_fish_env,
     'zsh': setup_zsh_env,
     'bash': setup_bash_env,
+    'powershell': setup_powershell_env,
+    'pwsh': setup_powershell_env,
 }
 
 ENV_SERIALIZERS: dict[str, Callable[[dict[str, str]], str]] = {
     'zsh': posix_serialize_env,
     'bash': posix_serialize_env,
     'fish': fish_serialize_env,
+    'powershell': powershell_serialize_env,
+    'pwsh': powershell_serialize_env,
 }
 
-QUOTERES = {'fish': as_fish_str_literal}
+QUOTERES = {'fish': as_fish_str_literal, 'powershell': powershell_str_literal, 'pwsh': powershell_str_literal}
 
 
 def get_supported_shell_name(path: str) -> str | None:
     name = os.path.basename(path)
     if name.lower().endswith('.exe'):
-        name = name.rpartition('.')[0]
+        name = name.rpartition('.')[0].lower()
     if name.startswith('-'):
         name = name[1:]
     return name if name in ENV_MODIFIERS else None
@@ -224,7 +287,8 @@ def join(path: str, cmd: Iterable[str]) -> str:
     def quote(x: str) -> str:
         return x if _find_unsafe(x) is None else q(x)
 
-    return ' '.join(map(quote, cmd))
+    ans = ' '.join(map(quote, cmd))
+    return '& ' + ans if name in ('powershell', 'pwsh') else ans
 
 
 def get_effective_ksi_env_var(opts: Options | None = None) -> str:

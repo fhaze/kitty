@@ -13,9 +13,17 @@ from contextlib import contextmanager
 from functools import lru_cache, partial
 
 from kitty.bash import decode_ansi_c_quoted_string
-from kitty.constants import is_macos, kitten_exe, kitty_base_dir, shell_integration_dir, terminfo_dir
+from kitty.constants import is_macos, is_windows, kitten_exe, kitty_base_dir, shell_integration_dir, terminfo_dir
 from kitty.fast_data_types import CURSOR_BEAM, CURSOR_BLOCK, CURSOR_UNDERLINE
-from kitty.shell_integration import setup_bash_env, setup_fish_env, setup_zsh_env
+from kitty.shell_integration import (
+    get_supported_shell_name,
+    join,
+    powershell_serialize_env,
+    setup_bash_env,
+    setup_fish_env,
+    setup_powershell_env,
+    setup_zsh_env,
+)
 
 from .base import BaseTest
 
@@ -121,6 +129,54 @@ def safe_env_for_running_shell(argv, home_dir, rc='', shell='zsh', with_kitten=F
 
 class ShellIntegration(BaseTest):
     with_kitten = False
+
+    def test_powershell_env_setup(self):
+        script = os.path.join(shell_integration_dir, 'powershell', 'kitty-integration.ps1')
+        for executable in ('pwsh.exe', r'C:\Program Files\PowerShell\7\pwsh.exe', 'powershell.exe'):
+            with self.subTest(executable=executable):
+                argv = [executable, '-NoLogo']
+                setup_powershell_env({}, argv)
+                self.ae(argv, [executable, '-NoLogo', '-NoExit', '-Command', f". '{script}'"])
+        argv = ['pwsh.exe', '-NoExit']
+        setup_powershell_env({}, argv)
+        self.ae(argv.count('-NoExit'), 1)
+        for args in (
+            ('-Command', 'Get-ChildItem'),
+            ('-c', 'Get-ChildItem'),
+            ('-File', 'script.ps1'),
+            ('-NonInteractive',),
+            ('script.ps1',),
+            ('-WorkingDirectory',),
+        ):
+            with self.subTest(args=args):
+                argv = ['pwsh.exe', *args]
+                original = argv[:]
+                setup_powershell_env({}, argv)
+                self.ae(argv, original)
+        self.ae(get_supported_shell_name(r'C:\Program Files\PowerShell\7\PWSH.EXE'), 'pwsh')
+        self.ae(get_supported_shell_name('powershell.exe'), 'powershell')
+        self.ae(join('pwsh.exe', ('Get-Item', 'path with spaces')), "& Get-Item 'path with spaces'")
+        self.ae(
+            powershell_serialize_env({'SIMPLE': 'value', 'QUOTED': "it's"}),
+            "[Environment]::SetEnvironmentVariable('SIMPLE', 'value')\n[Environment]::SetEnvironmentVariable('QUOTED', 'it''s')",
+        )
+
+    @unittest.skipUnless(is_windows and shutil.which('powershell.exe'), 'Windows PowerShell is not installed')
+    def test_powershell_integration_script(self):
+        script = os.path.join(shell_integration_dir, 'powershell', 'kitty-integration.ps1').replace("'", "''")
+        env = os.environ.copy()
+        env['KITTY_SHELL_INTEGRATION'] = 'enabled'
+        cp = subprocess.run(
+            ['powershell.exe', '-NoLogo', '-NoProfile', '-Command', f". '{script}'; Prompt"],
+            env=env,
+            capture_output=True,
+        )
+        self.ae(cp.returncode, 0, cp.stderr.decode('utf-8', 'replace'))
+        output = cp.stdout.decode('utf-8', 'replace')
+        self.assertIn('\x1b]2;', output)
+        self.assertIn('\x1b]7;file:', output)
+        self.assertIn('\x1b]133;A\x07', output)
+        self.assertIn('\x1b]133;B\x07', output)
 
     @contextmanager
     def run_shell(self, shell='zsh', rc='', cmd='', setup_env=None, extra_env=None):
