@@ -114,7 +114,7 @@ def download_with_progress(url: str, sha256: str, dest_dir: str, name: str) -> s
 
 
 USAGE = '''\
-Usage: kitty update [--fetch-version <tag|latest>]
+Usage: kitty +update [--fetch-version <tag|latest>]
 
 Check https://github.com/fhaze/kitty/releases for a newer Windows build of
 kitty, download its installer (with SHA-256 verification) and launch it to
@@ -145,12 +145,12 @@ def main(args: list[str]) -> None:
         i += 1
 
     if not is_windows:
-        raise SystemExit('kitty update is only supported on Windows. On other platforms use: kitten update-self (standalone kitten) or your package manager.')
+        raise SystemExit('kitty +update is only supported on Windows. On other platforms use: kitten update-self (standalone kitten) or your package manager.')
     run_data = getattr(sys, 'kitty_run_data', {})
     # the Windows launcher always sets sys.frozen to False, so identify
     # development/source builds via kitty_run_data instead
     if run_data.get('from_source') or not run_data.get('bundle_exe_dir'):
-        raise SystemExit('kitty update only works in installed builds, not development/source builds.')
+        raise SystemExit('kitty +update only works in installed builds, not development/source builds.')
     if inno_install_prefix() is None:
         raise SystemExit(f'This kitty was not installed with the kitty installer (portable zip or unknown location). Download the latest installer from {RELEASES_URL}')
 

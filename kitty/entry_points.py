@@ -128,11 +128,11 @@ entry_points = {
     # These two are here for backwards compat
     'icat': icat,
     'list-fonts': list_fonts,
-    'update': update,
     '+': namespaced,
 }
 namespaced_entry_points = {k: v for k, v in entry_points.items() if k[0] not in '+@'}
 namespaced_entry_points['hold'] = hold
+namespaced_entry_points['update'] = update
 namespaced_entry_points['complete'] = complete
 namespaced_entry_points['runpy'] = runpy
 namespaced_entry_points['launch'] = launch

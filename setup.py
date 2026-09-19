@@ -2530,7 +2530,7 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
     elif bundle_type == 'windows-package':
         bundle_wsl_kittens(args, libdir)
         create_windows_zip(ddir)
-        # Stamp the release tag into the installed libdir so kitty update can
+        # Stamp the release tag into the installed libdir so kitty +update can
         # distinguish -windows.N builds. Written after create_windows_zip so the
         # portable zip stays unstamped (portable installs are not updatable).
         if re.match(r'^v\d+\.\d+\.\d+-windows\.\d+$', tag := os.environ.get('KITTY_RELEASE_TAG', '')):
