@@ -1112,11 +1112,16 @@ class TestDataTypes(BaseTest):
     def test_path_from_osc7(self):
         from kitty.utils import path_from_osc7_url
 
-        self.ae('/tmp/x', path_from_osc7_url('file://host/tmp/x'))
-        self.ae('/tmp/x', path_from_osc7_url(b'file://host/tmp/x'))
-        self.ae('/tmp/a b', path_from_osc7_url('file://host/tmp/a%20b'))
+        with patch('kitty.utils.is_windows', False):
+            self.ae('/tmp/x', path_from_osc7_url('file://host/tmp/x'))
+            self.ae('/tmp/x', path_from_osc7_url(b'file://host/tmp/x'))
+            self.ae('/tmp/a b', path_from_osc7_url('file://host/tmp/a%20b'))
+            self.ae('/tmp/x', path_from_osc7_url('file://host/tmp/x\0'))
+            self.ae('/tmp/xy', path_from_osc7_url('file://host/tmp/x\0y'))
         self.ae('/tmp/x', path_from_osc7_url('kitty-shell-cwd://host/tmp/x'))
         self.ae('', path_from_osc7_url('not-a-url'))
-        self.ae('/tmp/x', path_from_osc7_url('file://host/tmp/x\0'))
-        self.ae('/tmp/xy', path_from_osc7_url('file://host/tmp/x\0y'))
         self.ae('/tmp/x', path_from_osc7_url('kitty-shell-cwd://host/tmp/x\0'))
+        with patch('kitty.utils.is_windows', True):
+            self.ae('C:/Users/me', path_from_osc7_url('file:///C:/Users/me'))
+            self.ae('C:/Users/me', path_from_osc7_url('file://host/C:/Users/me'))
+            self.ae('//host/share/path', path_from_osc7_url('file://host/share/path'))
