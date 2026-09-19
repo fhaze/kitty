@@ -76,10 +76,10 @@ def inno_install_prefix() -> 'str | None':
     import winreg
 
     expected = os.path.normcase(os.path.normpath(os.path.dirname(os.path.dirname(kitty_exe()))))
-    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):  # ty: ignore[unresolved-attribute]
         try:
-            with winreg.OpenKey(root, INNO_UNINSTALL_KEY) as key:
-                location, _ = winreg.QueryValueEx(key, 'InstallLocation')
+            with winreg.OpenKey(root, INNO_UNINSTALL_KEY) as key:  # ty: ignore[unresolved-attribute]
+                location, _ = winreg.QueryValueEx(key, 'InstallLocation')  # ty: ignore[unresolved-attribute]
         except OSError:
             continue
         if os.path.normcase(os.path.normpath(location)) == expected:
