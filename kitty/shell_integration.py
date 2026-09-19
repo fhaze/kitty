@@ -2,6 +2,7 @@
 # License: GPLv3 Copyright: 2021, Kovid Goyal <kovid at kovidgoyal.net>
 
 
+import ntpath
 import os
 import re
 import subprocess
@@ -251,7 +252,7 @@ QUOTERES = {'fish': as_fish_str_literal, 'powershell': powershell_str_literal, '
 
 
 def get_supported_shell_name(path: str) -> str | None:
-    name = os.path.basename(path)
+    name = ntpath.basename(path)
     if name.lower().endswith('.exe'):
         name = name.rpartition('.')[0].lower()
     if name.startswith('-'):
