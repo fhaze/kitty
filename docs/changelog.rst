@@ -341,6 +341,12 @@ Detailed list of changes
 - macOS: Fix long text from input methods being discarded when committed
   outside a key event (:pull:`10468`)
 
+- Windows: Add a new :code:`kitty update` command that checks
+  https://github.com/fhaze/kitty/releases for a newer Windows build, downloads
+  the installer with SHA-256 verification and launches it to upgrade the
+  installation in place. The periodic update check on Windows now also checks
+  these releases
+
 
 0.48.2 [2026-07-30]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

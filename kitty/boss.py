@@ -1569,7 +1569,10 @@ class Boss:
             else:
                 self.startup_first_child(first_os_window_id, startup_sessions=startup_sessions)
 
-        if (opts := get_options()).update_check_interval > 0 and not self.update_check_started and getattr(sys, 'frozen', False):
+        # on Windows sys.frozen is always False, so also check for an installed build via kitty_run_data
+        run_data = getattr(sys, 'kitty_run_data', {})
+        is_installed = getattr(sys, 'frozen', False) or (is_windows and bool(run_data.get('bundle_exe_dir')) and not run_data.get('from_source'))
+        if (opts := get_options()).update_check_interval > 0 and not self.update_check_started and is_installed:
             from .update_check import run_update_check
 
             run_update_check(get_options().update_check_interval * 60 * 60)

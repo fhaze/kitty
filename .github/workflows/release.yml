@@ -90,6 +90,8 @@ jobs:
 
           - name: Build Windows package
             id: pkg
+            env:
+              KITTY_RELEASE_TAG: ${{ github.ref_name }}
             run: |
               python setup.py windows-package
               zip=$(ls windows-package/kitty-*-windows-*.zip)

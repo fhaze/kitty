@@ -105,6 +105,12 @@ def run_kitten(args: list[str]) -> None:
     rk(kitten)
 
 
+def update(args: list[str]) -> None:
+    from kitty.update import main
+
+    main(args)
+
+
 def namespaced(args: list[str]) -> None:
     try:
         func = namespaced_entry_points[args[1]]
@@ -122,6 +128,7 @@ entry_points = {
     # These two are here for backwards compat
     'icat': icat,
     'list-fonts': list_fonts,
+    'update': update,
     '+': namespaced,
 }
 namespaced_entry_points = {k: v for k, v in entry_points.items() if k[0] not in '+@'}
