@@ -8,7 +8,6 @@ from .base import BaseTest
 
 
 class TestUpdate(BaseTest):
-
     def test_parse_release_tag(self):
         def t(tag, base, build):
             info = parse_release_tag(tag)

@@ -20,9 +20,9 @@ INNO_UNINSTALL_KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D0F
 
 
 class ReleaseInfo(NamedTuple):
-    base: Version          # the upstream kitty version
-    build: int             # the -windows.N suffix, 0 when absent
-    tag: str               # full tag, e.g. 'v0.48.2-windows.12'
+    base: Version  # the upstream kitty version
+    build: int  # the -windows.N suffix, 0 when absent
+    tag: str  # full tag, e.g. 'v0.48.2-windows.12'
 
 
 def parse_release_tag(tag: str) -> 'ReleaseInfo | None':
@@ -58,9 +58,7 @@ def fetch_release(ref: str) -> dict:
     try:
         return json.loads(urlopen(github_request(url), timeout=30).read())
     except Exception as e:
-        raise SystemExit(
-            f'Failed to query GitHub releases: {e}\n'
-            f'Download the latest installer manually from {RELEASES_URL}')
+        raise SystemExit(f'Failed to query GitHub releases: {e}\nDownload the latest installer manually from {RELEASES_URL}')
 
 
 def windows_setup_asset(release: dict) -> 'tuple[str, str, str]':
@@ -70,12 +68,13 @@ def windows_setup_asset(release: dict) -> 'tuple[str, str, str]':
             digest = asset.get('digest') or ''
             if not digest.startswith('sha256:'):
                 raise SystemExit(f'The kitty installer in release {tag} has no SHA-256 digest, refusing to download without verification')
-            return asset['name'], asset['browser_download_url'], digest[len('sha256:'):]
+            return asset['name'], asset['browser_download_url'], digest[len('sha256:') :]
     raise SystemExit(f'Release {tag} contains no Windows kitty installer (kitty-*-windows-x86_64-setup.exe)')
 
 
 def inno_install_prefix() -> 'str | None':
     import winreg
+
     expected = os.path.normcase(os.path.normpath(os.path.dirname(os.path.dirname(kitty_exe()))))
     for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
         try:
@@ -113,7 +112,7 @@ def download_with_progress(url: str, sha256: str, dest_dir: str, name: str) -> s
     return dest
 
 
-USAGE = '''\
+USAGE = """\
 Usage: kitty +update [--fetch-version <tag|latest>]
 
 Check https://github.com/fhaze/kitty/releases for a newer Windows build of
@@ -123,7 +122,7 @@ upgrade this installation in place.
 --fetch-version  Which release to fetch: a tag such as v0.48.2-windows.12 or
                  latest (the default). An explicit tag skips the up-to-date
                  check, allowing downgrade/reinstall.
-'''
+"""
 
 
 def main(args: list[str]) -> None:
@@ -153,8 +152,8 @@ def main(args: list[str]) -> None:
         raise SystemExit('kitty +update only works in installed builds, not development/source builds.')
     if inno_install_prefix() is None:
         raise SystemExit(
-            'This kitty was not installed with the kitty installer (portable zip or unknown location).'
-            f' Download the latest installer from {RELEASES_URL}')
+            f'This kitty was not installed with the kitty installer (portable zip or unknown location). Download the latest installer from {RELEASES_URL}'
+        )
 
     release = fetch_release(ref)
     info = parse_release_tag(release.get('tag_name', ''))
