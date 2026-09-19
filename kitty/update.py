@@ -152,7 +152,9 @@ def main(args: list[str]) -> None:
     if run_data.get('from_source') or not run_data.get('bundle_exe_dir'):
         raise SystemExit('kitty +update only works in installed builds, not development/source builds.')
     if inno_install_prefix() is None:
-        raise SystemExit(f'This kitty was not installed with the kitty installer (portable zip or unknown location). Download the latest installer from {RELEASES_URL}')
+        raise SystemExit(
+            'This kitty was not installed with the kitty installer (portable zip or unknown location).'
+            f' Download the latest installer from {RELEASES_URL}')
 
     release = fetch_release(ref)
     info = parse_release_tag(release.get('tag_name', ''))
