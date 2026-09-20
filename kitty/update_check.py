@@ -9,23 +9,25 @@ from typing import NamedTuple
 from urllib.request import urlopen
 
 from .config import atomic_save
-from .constants import Version, cache_dir, helper_process_popen_kwargs, kitty_exe, version, website_url
+from .constants import Version, cache_dir, helper_process_popen_kwargs, is_windows, kitty_exe, version, website_url
 from .fast_data_types import add_timer, get_boss, monitor_pid
+from .update import fetch_release, installed_release_info, is_newer, parse_release_tag
 from .utils import log_error, open_url
 
+FORK_RELEASES_URL = 'https://github.com/fhaze/kitty/releases/latest'
 CHANGELOG_URL = website_url('changelog')
 RELEASED_VERSION_URL = website_url() + 'current-version.txt'
 CHECK_INTERVAL = 24 * 60 * 60.0
 
 
 class Notification(NamedTuple):
-    version: Version
+    version: str
     time_of_last_notification: float
     notification_count: int
 
 
 def notification_activated() -> None:
-    open_url(CHANGELOG_URL)
+    open_url(FORK_RELEASES_URL if is_windows else CHANGELOG_URL)
 
 
 def version_notification_log() -> str:
@@ -35,11 +37,16 @@ def version_notification_log() -> str:
     return os.path.join(cache_dir(), 'new-version-notifications-1.txt')
 
 
-def notify_new_version(release_version: Version) -> None:
-    get_boss().notification_manager.send_new_version_notification('.'.join(map(str, release_version)))
+def notify_new_version(release_version: str) -> None:
+    get_boss().notification_manager.send_new_version_notification(release_version)
 
 
 def get_released_version() -> str:
+    if is_windows:
+        try:
+            return str(fetch_release('latest')['tag_name'])
+        except Exception:
+            return 'v0.0.0-windows.0'
     try:
         raw = urlopen(RELEASED_VERSION_URL).read().decode('utf-8').strip()
     except Exception:
@@ -48,14 +55,11 @@ def get_released_version() -> str:
 
 
 def parse_line(line: str) -> Notification:
-    parts = line.split(',')
-    version, timestamp, count = parts
-    parts = version.split('.')
-    v = Version(int(parts[0]), int(parts[1]), int(parts[2]))
-    return Notification(v, float(timestamp), int(count))
+    version, timestamp, count = line.split(',')
+    return Notification(version, float(timestamp), int(count))
 
 
-def read_cache() -> dict[Version, Notification]:
+def read_cache() -> dict[str, Notification]:
     notified_versions = {}
     with suppress(FileNotFoundError):
         with open(version_notification_log()) as f:
@@ -68,30 +72,35 @@ def read_cache() -> dict[Version, Notification]:
     return notified_versions
 
 
-def already_notified(version: tuple[int, int, int]) -> bool:
-    notified_versions = read_cache()
-    return version in notified_versions
+def already_notified(key: str) -> bool:
+    return key in read_cache()
 
 
-def save_notification(version: Version) -> None:
+def save_notification(key: str) -> None:
     notified_versions = read_cache()
-    if version in notified_versions:
-        v = notified_versions[version]
-        notified_versions[version] = v._replace(time_of_last_notification=time.time(), notification_count=v.notification_count + 1)
+    if key in notified_versions:
+        v = notified_versions[key]
+        notified_versions[key] = v._replace(time_of_last_notification=time.time(), notification_count=v.notification_count + 1)
     else:
-        notified_versions[version] = Notification(version, time.time(), 1)
+        notified_versions[key] = Notification(key, time.time(), 1)
     lines = []
-    for version in sorted(notified_versions):
-        n = notified_versions[version]
-        lines.append('{},{},{}'.format('.'.join(map(str, n.version)), n.time_of_last_notification, n.notification_count))
+    for k in sorted(notified_versions):
+        n = notified_versions[k]
+        lines.append(f'{n.version},{n.time_of_last_notification},{n.notification_count}')
     atomic_save('\n'.join(lines).encode('utf-8'), version_notification_log())
 
 
 def process_current_release(raw: str) -> None:
+    if is_windows:
+        info = parse_release_tag(raw)
+        if info is not None and is_newer(info, installed_release_info()) and not already_notified(raw):
+            save_notification(raw)
+            notify_new_version(info.tag.lstrip('v'))
+        return
     release_version = Version(*tuple(map(int, raw.split('.'))))
-    if release_version > version and not already_notified(release_version):
-        save_notification(release_version)
-        notify_new_version(release_version)
+    if release_version > version and not already_notified(raw):
+        save_notification(raw)
+        notify_new_version('.'.join(map(str, release_version)))
 
 
 def run_worker() -> None:

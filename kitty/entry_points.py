@@ -105,6 +105,12 @@ def run_kitten(args: list[str]) -> None:
     rk(kitten)
 
 
+def update(args: list[str]) -> None:
+    from kitty.update import main
+
+    main(args)
+
+
 def namespaced(args: list[str]) -> None:
     try:
         func = namespaced_entry_points[args[1]]
@@ -126,6 +132,7 @@ entry_points = {
 }
 namespaced_entry_points = {k: v for k, v in entry_points.items() if k[0] not in '+@'}
 namespaced_entry_points['hold'] = hold
+namespaced_entry_points['update'] = update
 namespaced_entry_points['complete'] = complete
 namespaced_entry_points['runpy'] = runpy
 namespaced_entry_points['launch'] = launch
