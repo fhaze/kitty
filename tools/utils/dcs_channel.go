@@ -25,6 +25,11 @@ func DCSChannelAddress() string {
 // SendDCSViaChannel delivers the DCS payload @kitty-<msgtype>|<body> to kitty
 // over the out-of-band channel instead of the tty.
 func SendDCSViaChannel(msgtype, body string) error {
+	return SendRawDCSViaChannel("@kitty-" + msgtype + "|" + body)
+}
+
+// SendRawDCSViaChannel delivers a complete @kitty- DCS payload.
+func SendRawDCSViaChannel(dcs string) error {
 	window_id, err := strconv.Atoi(os.Getenv("KITTY_WINDOW_ID"))
 	if err != nil {
 		return fmt.Errorf("Invalid KITTY_WINDOW_ID env var: %#v", os.Getenv("KITTY_WINDOW_ID"))
@@ -33,7 +38,7 @@ func SendDCSViaChannel(msgtype, body string) error {
 		"cmd":       "dcs",
 		"token":     os.Getenv("KITTY_DCS_CHANNEL_TOKEN"),
 		"window_id": window_id,
-		"dcs":       base64.StdEncoding.EncodeToString(UnsafeStringToBytes("@kitty-" + msgtype + "|" + body)),
+		"dcs":       base64.StdEncoding.EncodeToString(UnsafeStringToBytes(dcs)),
 	})
 	if err != nil {
 		return err

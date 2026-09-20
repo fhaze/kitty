@@ -202,8 +202,8 @@ Detailed list of changes
 0.49.0 [future]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Windows: Fix launching kittens, such as the interactive window resizer, from
-  PowerShell when shell integration reports the current working directory
+- Windows: Fix launching and using the interactive window resizer from
+  PowerShell
 
 - Support for :doc:`/custom-shaders` for adding various graphical effects (:iss:`10344`)
 
