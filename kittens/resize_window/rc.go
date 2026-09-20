@@ -24,5 +24,8 @@ func resize_command_escape_code(increment int, axis string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if utils.DCSChannelAddress() != "" {
+		return "", utils.SendRawDCSViaChannel("@kitty-cmd" + string(data))
+	}
 	return "\x1bP@kitty-cmd" + string(data) + "\x1b\\", nil
 }

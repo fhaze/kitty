@@ -1060,7 +1060,13 @@ def path_from_osc7_url(url: str | bytes) -> str:
     if url.startswith('file://'):
         from urllib.parse import unquote, urlparse
 
-        ans = unquote(urlparse(url).path)
+        parsed = urlparse(url)
+        ans = unquote(parsed.path)
+        if is_windows:
+            if re.match(r'^/[A-Za-z]:[/\\]', ans):
+                ans = ans[1:]
+            elif parsed.netloc:
+                ans = '//' + parsed.netloc + ans
     # We cannot allow NUL in ans as it breaks storing the path in session files
     return ans.replace('\0', '')
 
