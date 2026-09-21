@@ -63,6 +63,7 @@ from .shaders.slang import load_shader_programs
 from .types import LayerShellConfig
 from .utils import (
     cleanup_ssh_control_masters,
+    cwd_is_kitty_exe_dir,
     expandvars,
     get_custom_window_icon,
     log_error,
@@ -578,7 +579,10 @@ def kitty_main(called_from_panel: bool = False) -> None:
         cwd_ok = os.path.isdir(os.getcwd())
     except Exception:
         cwd_ok = False
-    if not cwd_ok:
+    if not cwd_ok or (is_windows and cwd_is_kitty_exe_dir(os.getcwd())):
+        # On Windows the working directory is set to the directory containing
+        # kitty.exe when launched from a shortcut, the Start Menu or Explorer,
+        # so use the home directory as the default working directory instead
         os.chdir(os.path.expanduser('~'))
     cli_flags = None
     if getattr(sys, 'cmdline_args_for_open', False):

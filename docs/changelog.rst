@@ -202,6 +202,10 @@ Detailed list of changes
 0.49.0 [future]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+- Windows: Fix new terminal windows starting in the kitty.exe installation
+  directory instead of the user's home directory when kitty is launched from
+  a shortcut, the Start Menu or Explorer
+
 - Windows: Fix launching and using the interactive window resizer from
   PowerShell
 

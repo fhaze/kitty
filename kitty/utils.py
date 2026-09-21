@@ -2,6 +2,7 @@
 # License: GPL v3 Copyright: 2016, Kovid Goyal <kovid at kovidgoyal.net>
 
 import math
+import ntpath
 import os
 import re
 import string
@@ -29,6 +30,7 @@ from .constants import (
     is_wayland,
     is_windows,
     kitten_exe,
+    kitty_exe,
     runtime_dir,
     shell_path,
     ssh_control_master_template,
@@ -701,6 +703,15 @@ def is_ok_to_read_image_file(path: str, fd: int) -> bool:
     if not os.path.samestat(path_stat, fd_stat):
         return False
     return stat.S_ISREG(fd_stat.st_mode)
+
+
+def cwd_is_kitty_exe_dir(cwd: str) -> bool:
+    # When kitty is launched from a shortcut, the Start Menu or Explorer,
+    # Windows sets the working directory of the process to the directory
+    # containing kitty.exe
+    with suppress(Exception):  # kitty_exe() fails if the kitty binary is not found
+        return ntpath.normcase(ntpath.normpath(cwd)) == ntpath.normcase(ntpath.normpath(ntpath.dirname(kitty_exe())))
+    return False
 
 
 def resolve_abs_or_config_path(path: str, env: Mapping[str, str] | None = None, conf_dir: str | None = None) -> str:
