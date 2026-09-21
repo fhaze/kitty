@@ -161,6 +161,7 @@ from .types import AsyncResponse, LayerShellConfig, SingleInstanceData, WindowSy
 from .typing_compat import PopenType, TypedDict
 from .utils import (
     cleanup_ssh_control_masters,
+    cwd_is_kitty_exe_dir,
     func_name,
     get_editor,
     get_new_os_window_size,
@@ -1086,7 +1087,13 @@ class Boss:
             else:
                 args.session = ''
             if not os.path.isabs(args.directory):
-                args.directory = os.path.join(data['cwd'], args.directory)
+                sender_cwd = data['cwd']
+                if is_windows and not args.directory and cwd_is_kitty_exe_dir(sender_cwd):
+                    # The new instance was launched from a shortcut, the Start
+                    # Menu or Explorer, use the default working directory (the
+                    # user's home) rather than the kitty.exe directory
+                    sender_cwd = ''
+                args.directory = os.path.join(sender_cwd, args.directory)
             from .launch import parse_os_window_position
 
             pos_x, pos_y = (None, None) if is_wayland() else parse_os_window_position(args.position)

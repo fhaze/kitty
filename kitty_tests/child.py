@@ -19,7 +19,22 @@ class ChildMemoryTest(BaseTest):
             for executable in ('cmd.exe', r'C:\Program Files\PowerShell\7\pwsh.exe', 'powershell.exe'):
                 with self.subTest(executable=executable):
                     self.assertTrue(Child([executable], '').is_shell)
-            self.assertFalse(Child(['python.exe'], '').is_shell)
+        self.assertFalse(Child(['python.exe'], '').is_shell)
+
+    def test_windows_cwd_is_kitty_exe_dir(self):
+        # When launched from a shortcut/Start Menu the process working
+        # directory is the kitty.exe directory, which must be detected so the
+        # home directory is used as the default working directory instead
+        from kitty.utils import cwd_is_kitty_exe_dir
+
+        with patch('kitty.utils.kitty_exe', return_value=r'C:\Program Files\kitty\bin\kitty.exe'):
+            self.assertTrue(cwd_is_kitty_exe_dir(r'C:\Program Files\kitty\bin'))
+            self.assertTrue(cwd_is_kitty_exe_dir(r'c:\program files\kitty\bin'))
+            self.assertTrue(cwd_is_kitty_exe_dir(r'C:\Program Files\kitty\bin\\'))
+            self.assertFalse(cwd_is_kitty_exe_dir(r'C:\Program Files\kitty'))
+            self.assertFalse(cwd_is_kitty_exe_dir(r'C:\Users\someone'))
+        with patch('kitty.utils.kitty_exe', side_effect=RuntimeError('not found')):
+            self.assertFalse(cwd_is_kitty_exe_dir(os.getcwd()))
 
     def test_windows_default_shell_running_program_detection(self):
         child = SimpleNamespace(is_shell=True, pid=12, pid_for_cwd=12)
