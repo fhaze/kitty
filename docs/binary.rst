@@ -73,9 +73,9 @@ The :file:`bin` directory contains both :file:`kitty.exe` and :file:`kitty.com`.
 does not open a console window, but that also means :program:`cmd.exe` and
 PowerShell do not wait for it. :file:`kitty.com` is a small console program
 that runs :file:`kitty.exe` and waits for it, and since ``.COM`` precedes
-``.EXE`` in :envvar:`PATHEXT`, typing ``kitty`` in a shell runs it. This is
-what makes ``kitty @ ls``, ``kitty +kitten ssh`` or ``kitty --version`` work
-from the shell prompt. Use :file:`kitty.exe` explicitly (or ``kitty --detach``)
+``.EXE`` in the :code:`PATHEXT` environment variable, typing ``kitty`` in a
+shell runs it. This is what makes ``kitty @ ls``, ``kitty +kitten ssh`` or
+``kitty --version`` work from the shell prompt. Use :file:`kitty.exe` explicitly (or ``kitty --detach``)
 when you do not want the shell to wait.
 
 

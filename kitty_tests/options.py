@@ -230,8 +230,8 @@ def launcher(self):
             cps = subprocess.run([console_shim, '+testing-launcher-code'] + args, env=env, stdout=subprocess.PIPE)
             self.assertEqual(cps.returncode, 0)
             self.assertEqual(
-                cp.stdout.replace(b'\\', b'/'), cps.stdout.replace(b'\\', b'/'),
-                f'kitty.com output differs from kitty.exe for command line: {cmdline}')
+                cp.stdout.replace(b'\\', b'/'), cps.stdout.replace(b'\\', b'/'), f'kitty.com output differs from kitty.exe for command line: {cmdline}'
+            )
         ans = {}
         for line in cp.stdout.decode().split('\n'):
             if not line:
