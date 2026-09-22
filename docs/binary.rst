@@ -68,6 +68,39 @@ switches, for example::
 If you prefer not to run an installer, :file:`kitty-<version>-windows-x86_64.zip`
 contains the same files, extract it anywhere and run :file:`bin\\kitty.exe`.
 
+The :file:`bin` directory contains both :file:`kitty.exe` and :file:`kitty.com`.
+:file:`kitty.exe` is a GUI program, so that starting it from the start menu
+does not open a console window, but that also means :program:`cmd.exe` and
+PowerShell do not wait for it. :file:`kitty.com` is a small console program
+that runs :file:`kitty.exe` and waits for it, and since ``.COM`` precedes
+``.EXE`` in :envvar:`PATHEXT`, typing ``kitty`` in a shell runs it. This is
+what makes ``kitty @ ls``, ``kitty +kitten ssh`` or ``kitty --version`` work
+from the shell prompt. Use :file:`kitty.exe` explicitly (or ``kitty --detach``)
+when you do not want the shell to wait.
+
+
+SSH from Windows
+^^^^^^^^^^^^^^^^^^^
+
+kitty sets :envvar:`TERM` to ``xterm-kitty`` and plain :program:`ssh` (including
+``gcloud compute ssh``) forwards it to the remote host. On a host without the
+kitty terminfo files this results in errors such as ``'xterm-kitty': unknown
+terminal type.`` from :program:`clear`, and
+terminfo based programs such as :program:`vim`, :program:`less` or :program:`zsh`
+may misbehave, for example not erasing on :kbd:`Backspace`. This is the same
+on all platforms, not a Windows or WSL specific problem. Use the :doc:`ssh
+kitten </kittens/ssh>` instead of :program:`ssh`, it copies the terminfo files
+and the :ref:`shell integration <shell_integration>` to the remote host
+automatically::
+
+    kitten ssh myserver
+    kitty +kitten ssh myserver
+
+Both forms are equivalent, the kitten also works from inside WSL once the WSL
+:program:`kitten` is installed, see above. If you must use plain
+:program:`ssh` against hosts you cannot install terminfo on, set ``term
+xterm-256color`` in :file:`kitty.conf` instead, see :opt:`term`.
+
 
 kitten in WSL
 ^^^^^^^^^^^^^^^^

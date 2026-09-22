@@ -63,7 +63,7 @@ LZMAUseSeparateProcess=yes
 WizardStyle=modern
 ; Ask to close running kitty instances so their files can be replaced during an upgrade
 CloseApplications=yes
-CloseApplicationsFilter=*.exe,*.dll,*.pyd
+CloseApplicationsFilter=*.exe,*.com,*.dll,*.pyd
 RestartApplications=no
 ChangesEnvironment=yes
 UsePreviousAppDir=yes

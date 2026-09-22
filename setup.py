@@ -1768,6 +1768,27 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
         ldflags.append('-mwindows')
     cmd = env.cc + ldflags + objects + libs + pylib + ['-o', dest]
     args.compilation_database.add_command(desc, cmd, partial(newer, dest, *objects), key=LinkKey('kitty' + exe_ext))
+    if is_windows:
+        # Console subsystem shim that runs kitty.exe and waits for it. cmd.exe
+        # and PowerShell resolve "kitty" to it (.COM precedes .EXE in PATHEXT)
+        # and so wait for kitty @ ..., kitty +kitten ..., --version etc.
+        shim_src = 'kitty/launcher/win32-console-shim.c'
+        shim_obj = os.path.join(build_dir, shim_src.replace('/', '-').replace('.c', '.o'))
+        shim_dest = os.path.join(launcher_dir, 'kitty.com')
+        link_targets.append(os.path.abspath(shim_dest))
+        cmd = env.cc + cppflags + cflags + ['-c', shim_src, '-o', shim_obj]
+        args.compilation_database.add_command(
+            f'Compiling {emphasis(shim_src)} ...',
+            cmd,
+            partial(newer, shim_obj, shim_src),
+            key=CompileKey(shim_src, os.path.basename(shim_obj)),
+            keyfile=shim_src,
+        )
+        shim_ldflags = [x for x in ldflags if x != '-mwindows'] + ['-mconsole', '-municode']
+        cmd = env.cc + shim_ldflags + [shim_obj, resource_obj] + ['-o', shim_dest]
+        args.compilation_database.add_command(
+            f'Linking {emphasis("kitty.com")} ...', cmd, partial(newer, shim_dest, shim_obj, resource_obj), key=LinkKey('kitty.com')
+        )
     if args.build_dsym and is_macos:
         desc = f'Linking dSYM {emphasis("launcher")} ...'
         dsym = f'{dest}.dSYM/Contents/Resources/DWARF/{os.path.basename(dest)}'

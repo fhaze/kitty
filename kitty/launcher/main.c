@@ -379,8 +379,8 @@ exec_kitten(int argc, char *argv[], char *exe_dir) {
     errno = 0;
 #ifdef _WIN32
     safe_snprintf(exe, PATH_MAX, "%s/kitten.exe", exe_dir);
-    intptr_t ret = _spawnv(_P_WAIT, exe, (const char *const *)argv);
-    if (ret != -1) exit((int)ret);
+    int ret = win32_spawn_and_wait(exe, argv);
+    if (ret != -1) exit(ret);
 #else
     execv(exe, argv);
 #endif
