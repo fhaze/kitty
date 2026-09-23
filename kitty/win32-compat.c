@@ -435,6 +435,31 @@ kitty_win32_fd_from_socket_handle(intptr_t sock) {
     return fd;
 }
 
+bool
+kitty_win32_peer_credentials_are_available(int fd) {
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        // fail closed, like the POSIX implementation
+        return true;
+    }
+    if (!is_socket(h)) {
+        errno = ENOTSOCK;
+        // fail closed
+        return true;
+    }
+    struct sockaddr_storage addr = {0};
+    int sz = sizeof(addr);
+    if (getsockname((SOCKET)h, (struct sockaddr *)&addr, &sz) == SOCKET_ERROR) {
+        set_errno_from_last_error();
+        // fail closed
+        return true;
+    }
+    // Windows local sockets have no peer credentials; report AF_UNIX as
+    // verifiable so that the caller denies the peer rather than trusting it
+    return addr.ss_family == AF_UNIX;
+}
+
 int
 kitty_win32_socketpair(uintptr_t out[2]) {
     SOCKET listener = INVALID_SOCKET, a = INVALID_SOCKET, b = INVALID_SOCKET;
