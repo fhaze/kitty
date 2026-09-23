@@ -172,8 +172,12 @@ get_peer_credentials(int fd, uid_t *euid, gid_t *egid) {
 // which means peers will be denied since getting their credentials will fail.
 static inline bool
 peer_credentials_are_available(int fd) {
+#ifdef _WIN32
+    return kitty_win32_peer_credentials_are_available(fd);
+#else
     struct sockaddr_storage addr = {0};
     socklen_t sz = sizeof(addr);
     if (getsockname(fd, (struct sockaddr *)&addr, &sz) != 0) return true;
     return addr.ss_family == AF_UNIX;
+#endif
 }
