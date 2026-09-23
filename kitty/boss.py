@@ -11,7 +11,7 @@ import socket
 import subprocess
 import sys
 from collections import deque
-from collections.abc import Callable, Container, Generator, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Container, Generator, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from functools import partial
@@ -757,6 +757,7 @@ class Boss:
         if isinstance(args, SpecialWindowInstance):
             sw: SpecialWindowInstance | None = args
         else:
+            args = tuple(args)
             sw = self.args_to_special_window(args, cwd_from) if args else None
         startup_session = next(create_sessions(get_options(), special_window=sw, cwd_from=cwd_from))
         startup_session.session_name = ''
@@ -3355,10 +3356,11 @@ class Boss:
 
     def _new_tab(self, args: SpecialWindowInstance | Iterable[str], cwd_from: CwdRequest | None = None, as_neighbor: bool = False) -> Tab | None:
         special_window = None
-        if args:
-            if isinstance(args, SpecialWindowInstance):
-                special_window = args
-            else:
+        if isinstance(args, SpecialWindowInstance):
+            special_window = args
+        else:
+            args = tuple(args)
+            if args:
                 special_window = self.args_to_special_window(args, cwd_from=cwd_from)
         if not self.os_window_map:
             self.add_os_window()
@@ -3645,7 +3647,7 @@ class Boss:
                 except Exception as e:
                     log_error(f'Failed to process update check data {raw!r}, with error: {e}')
 
-    def show_bad_config_lines(self, bad_lines: Iterable[BadLine], misc_errors: Iterable[str] = ()) -> None:
+    def show_bad_config_lines(self, bad_lines: Iterable[BadLine], misc_errors: Collection[str] = ()) -> None:
 
         def format_bad_line(bad_line: BadLine) -> str:
             return f'{bad_line.number}:{bad_line.exception} in line: {bad_line.line}\n'
