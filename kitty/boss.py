@@ -477,14 +477,17 @@ class Boss:
             DumpCommands(args) if args.dump_commands or args.dump_bytes else None,
             talk_fd,
             listen_fd,
-            self.listening_on.startswith('unix:'),
         )
         self.args: CLIOptions = args
         self.mouse_handler: Callable[[WindowSystemMouseEvent], None] | None = None
         set_boss(self)
         self.mappings: Mappings = Mappings(global_shortcuts, self.refresh_active_tab_bar)
         self.notification_manager: NotificationManager = NotificationManager(debug=self.args.debug_keyboard or self.args.debug_rendering)
-        self.atexit.unlink(store_effective_config())
+        effective_config_path, effective_config_error = store_effective_config()
+        if effective_config_path:
+            self.atexit.unlink(effective_config_path)
+        if effective_config_error:
+            self.misc_config_errors.append(effective_config_error)
 
     def startup_first_child(self, os_window_id: int | None, startup_sessions: Iterable[Session] = ()) -> None:
         si = startup_sessions or create_sessions(get_options(), self.args, default_session=get_options().startup_session)
