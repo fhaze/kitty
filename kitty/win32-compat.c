@@ -1498,6 +1498,44 @@ win32_spawn_detached(char *const argv[]) {
     return true;
 }
 
+static BOOL WINAPI
+ignore_console_ctrl_event(DWORD type UNUSED) {
+    return TRUE;
+}
+
+int
+win32_spawn_and_wait(const char *exe, char *const argv[]) {
+    char cmdline[32768];
+    size_t pos = 0;
+    if (!kitty_win32_append_quoted_arg(cmdline, sizeof(cmdline), &pos, exe)) {
+        errno = E2BIG;
+        return -1;
+    }
+    for (int i = 1; argv[i]; i++) {
+        if (!kitty_win32_append_quoted_arg(cmdline, sizeof(cmdline), &pos, argv[i])) {
+            errno = E2BIG;
+            return -1;
+        }
+    }
+    STARTUPINFOA si = {.cb = sizeof(si)};
+    PROCESS_INFORMATION pi = {0};
+    // Ctrl+C is delivered to every process attached to the console, let the
+    // child deal with it and keep waiting for its exit code.
+    SetConsoleCtrlHandler(ignore_console_ctrl_event, TRUE);
+    if (!CreateProcessA(exe, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+        set_errno_from_last_error();
+        SetConsoleCtrlHandler(ignore_console_ctrl_event, FALSE);
+        return -1;
+    }
+    CloseHandle(pi.hThread);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    SetConsoleCtrlHandler(ignore_console_ctrl_event, FALSE);
+    return (int)code;
+}
+
 static HANDLE
 valid_std_handle(DWORD which) {
     HANDLE h = GetStdHandle(which);

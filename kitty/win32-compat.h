@@ -164,6 +164,9 @@ bool win32_exe_path(char *buf, size_t buf_sz);
 // Re-runs the current executable with the specified argv as a detached process
 // (no console, own process group), returns false on failure.
 bool win32_spawn_detached(char *const argv[]);
+// Runs exe with argv[1:] as a child sharing this process' console and std
+// handles, waits for it and returns its exit code, or -1 with errno set.
+int win32_spawn_and_wait(const char *exe, char *const argv[]);
 // Attaches to the console of the parent process, if it has one, and binds any
 // of stdin/stdout/stderr that the parent did not redirect to it. Needed
 // because GUI subsystem executables do not inherit the parent's console.
