@@ -369,12 +369,12 @@ Detailed list of changes
 - macOS: Allow input methods to read the text around the cursor, so that input
   methods that automatically insert a space between Latin and CJK text work
   (:iss:`10492`)
+
 - Windows: Add a new :code:`kitty +update` command that checks
   https://github.com/fhaze/kitty/releases for a newer Windows build, downloads
   the installer with SHA-256 verification and launches it to upgrade the
   installation in place. The periodic update check on Windows now also checks
   these releases
-
 
 0.48.2 [2026-07-30]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
