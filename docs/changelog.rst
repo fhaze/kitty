@@ -202,6 +202,19 @@ Detailed list of changes
 0.49.0 [2026-09-21]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+- Windows: Fix shells not waiting for kitty commands started from the prompt,
+  which broke :code:`kitty --version`, :code:`kitty @` remote control commands
+  and kittens such as :code:`kitty +kitten ssh`. A ``kitty.com`` console shim
+  that waits for kitty to finish is now installed alongside the executables
+
+- Windows: Fix kittens such as show_error and hints failing when they read
+  input from STDIN, by passing the special window stdin pipe to the child
+  process instead of the console
+
+- Windows: Fix launching child processes failing when the current working
+  directory no longer exists, for example a WSL shell reporting a Linux path
+  via OSC 7, which broke the paste confirmation dialog
+
 - Windows: Fix new terminal windows starting in the kitty.exe installation
   directory instead of the user's home directory when kitty is launched from
   a shortcut, the Start Menu or Explorer
