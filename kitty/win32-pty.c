@@ -414,7 +414,7 @@ build_environment_block(char *const env[]) {
 }
 
 typedef struct {
-    HANDLE ready, stdin_pipe, thread, pty_in_write;
+    HANDLE ready, thread;
     Win32Pty *pty;
 } ResumeData;
 
@@ -430,32 +430,24 @@ resume_thread(void *arg) {
     }
     ResumeThread(d->thread);
     CloseHandle(d->thread);
-    if (d->stdin_pipe != INVALID_HANDLE_VALUE) {
-        char buf[8192];
-        DWORD n;
-        while (ReadFile(d->stdin_pipe, buf, sizeof(buf), &n, NULL) && n > 0) {
-            const char *p = buf;
-            while (n) {
-                DWORD written = 0;
-                if (!WriteFile(d->pty_in_write, p, n, &written, NULL)) break;
-                p += written;
-                n -= written;
-            }
-        }
-        CloseHandle(d->stdin_pipe);
-    }
     pty_unref(d->pty);
     free(d);
     return 0;
 }
 
 static HANDLE
-dup_fd_handle(int fd) {
+dup_fd_handle(int fd, BOOL inheritable) {
     if (fd < 0) return INVALID_HANDLE_VALUE;
     HANDLE src = (HANDLE)_get_osfhandle(fd), ans = INVALID_HANDLE_VALUE;
     if (src == INVALID_HANDLE_VALUE) return INVALID_HANDLE_VALUE;
-    if (!DuplicateHandle(GetCurrentProcess(), src, GetCurrentProcess(), &ans, 0, FALSE, DUPLICATE_SAME_ACCESS)) return INVALID_HANDLE_VALUE;
+    if (!DuplicateHandle(GetCurrentProcess(), src, GetCurrentProcess(), &ans, 0, inheritable, DUPLICATE_SAME_ACCESS)) return INVALID_HANDLE_VALUE;
     return ans;
+}
+
+static bool
+is_existing_directory(const wchar_t *path) {
+    DWORD attrs = GetFileAttributesW(path);
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY);
 }
 
 pid_t
@@ -471,15 +463,33 @@ win32_pty_spawn(int master_fd, const char *exe, const char *cwd, char *const arg
     LPPROC_THREAD_ATTRIBUTE_LIST attrs = NULL;
     SIZE_T attrs_sz = 0;
     ResumeData *rd = NULL;
+    HANDLE child_stdin = INVALID_HANDLE_VALUE;
     if (!wexe || (cwd && *cwd && !wcwd) || !cmdline || !envblock) {
         errno = ENOMEM;
         goto end;
     }
     to_backslashes(wexe);
-    if (wcwd) to_backslashes(wcwd);
-    InitializeProcThreadAttributeList(NULL, 1, 0, &attrs_sz);
+    if (wcwd) {
+        to_backslashes(wcwd);
+        // Like chdir() failing in the POSIX child, run in our own cwd when the
+        // requested one does not exist, for example a path reported via OSC 7
+        // by a shell running inside WSL.
+        if (!is_existing_directory(wcwd)) {
+            free(wcwd);
+            wcwd = NULL;
+        }
+    }
+    if (stdin_read_fd > -1) {
+        child_stdin = dup_fd_handle(stdin_read_fd, TRUE);
+        if (child_stdin == INVALID_HANDLE_VALUE) {
+            set_errno_from_last_error();
+            goto end;
+        }
+    }
+    DWORD num_attrs = child_stdin == INVALID_HANDLE_VALUE ? 1 : 2;
+    InitializeProcThreadAttributeList(NULL, num_attrs, 0, &attrs_sz);
     attrs = malloc(attrs_sz);
-    if (!attrs || !InitializeProcThreadAttributeList(attrs, 1, 0, &attrs_sz)) {
+    if (!attrs || !InitializeProcThreadAttributeList(attrs, num_attrs, 0, &attrs_sz)) {
         set_errno_from_last_error();
         goto end;
     }
@@ -487,17 +497,24 @@ win32_pty_spawn(int master_fd, const char *exe, const char *cwd, char *const arg
         set_errno_from_last_error();
         goto end;
     }
+    // Restrict inheritance to only the stdin pipe
+    if (child_stdin != INVALID_HANDLE_VALUE &&
+        !UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, &child_stdin, sizeof(child_stdin), NULL, NULL)) {
+        set_errno_from_last_error();
+        goto end;
+    }
     // Without STARTF_USESTDHANDLES the child gets copies of our (possibly
     // redirected) std handles instead of the pseudoconsole's. NULL handles
     // make the console subsystem hand it the ConPTY handles instead.
     STARTUPINFOEXW si = {.StartupInfo.cb = sizeof(si), .StartupInfo.dwFlags = STARTF_USESTDHANDLES, .lpAttributeList = attrs};
+    if (child_stdin != INVALID_HANDLE_VALUE) si.StartupInfo.hStdInput = child_stdin;
     PROCESS_INFORMATION pi = {0};
     if (!CreateProcessW(
             wexe,
             cmdline,
             NULL,
             NULL,
-            FALSE,
+            child_stdin != INVALID_HANDLE_VALUE,
             EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
             envblock,
             wcwd,
@@ -523,23 +540,21 @@ win32_pty_spawn(int master_fd, const char *exe, const char *cwd, char *const arg
         CloseHandle(pi.hThread);
         goto end;
     }
-    rd->ready = dup_fd_handle(ready_read_fd);
-    rd->stdin_pipe = dup_fd_handle(stdin_read_fd);
+    rd->ready = dup_fd_handle(ready_read_fd, FALSE);
     rd->thread = pi.hThread;
-    rd->pty_in_write = pty->pty_in_write;
     rd->pty = pty_ref(pty);
     HANDLE t = (HANDLE)_beginthreadex(NULL, 0, resume_thread, rd, 0, NULL);
     if (!t) {
         // Run the child without waiting for the ready signal
         pty_unref(pty);
         if (rd->ready != INVALID_HANDLE_VALUE) CloseHandle(rd->ready);
-        if (rd->stdin_pipe != INVALID_HANDLE_VALUE) CloseHandle(rd->stdin_pipe);
         free(rd);
         ResumeThread(pi.hThread);
         CloseHandle(pi.hThread);
     } else CloseHandle(t);
     ans = (pid_t)pi.dwProcessId;
 end:
+    if (child_stdin != INVALID_HANDLE_VALUE) CloseHandle(child_stdin);
     if (attrs) {
         DeleteProcThreadAttributeList(attrs);
         free(attrs);
