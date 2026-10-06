@@ -820,7 +820,7 @@ def kitty_env(args: Options) -> Env:
     elif is_windows:
         cflags.extend(pkg_config('cairo-ft', '--cflags-only-I'))
         platform_libs = pkg_config('cairo-ft', '--libs')
-        platform_libs.extend('-lws2_32 -lbcrypt -lgdi32 -luser32 -lshell32 -ladvapi32 -lshlwapi -lole32 -luuid -ldwrite -lpsapi -lwtsapi32'.split())
+        platform_libs.extend('-lws2_32 -lbcrypt -lgdi32 -luser32 -lshell32 -ladvapi32 -lshlwapi -lole32 -luuid -ldwrite -lpsapi -lwtsapi32 -lsystre'.split())
     else:
         cflags.extend(pkg_config('cairo-fc', '--cflags-only-I'))
         platform_libs = []
@@ -2486,7 +2486,7 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
     shutil.copy2('logo/beam-cursor@2x.png', os.path.join(libdir, 'logo'))
     copy_shell_integration(os.path.join(libdir, 'shell-integration'), bundle_type == 'windows-package')
     shutil.copytree('fonts', os.path.join(libdir, 'fonts'), dirs_exist_ok=True)
-    allowed_extensions = frozenset('py slang glsl so pyd'.split())
+    allowed_extensions = frozenset('py slang pipeline glsl so pyd'.split())
 
     def src_ignore(parent: str, entries: Iterable[str]) -> List[str]:
         ans = []

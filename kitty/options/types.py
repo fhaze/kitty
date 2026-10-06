@@ -352,6 +352,7 @@ option_names = (
     'cursor_underline_thickness',
     'custom_shaders',
     'default_pointer_shape',
+    'detect_url_regex',
     'detect_urls',
     'dim_opacity',
     'disable_ligatures',
@@ -743,6 +744,7 @@ class Options:
     window_title_template: str = '{fmt.fg.red}{bell_symbol}{activity_symbol}{fmt.fg.window}{progress_percent}{title}'
     windows_blur_mode: choices_for_windows_blur_mode = 'blur'
     action_alias: dict[str, str] = {}
+    detect_url_regex: dict[str, str] = {}
     env: dict[str, str] = {}
     exe_search_path: dict[str, str] = {}
     filter_notification: dict[str, str] = {}
@@ -872,6 +874,7 @@ class Options:
 defaults = Options()
 
 defaults.action_alias = {}
+defaults.detect_url_regex = {}
 defaults.env = {}
 defaults.exe_search_path = {}
 defaults.filter_notification = {}

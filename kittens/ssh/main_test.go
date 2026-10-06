@@ -8,7 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/kovidgoyal/go-shm"
+	shm "github.com/kovidgoyal/go-shm/v2"
 	"github.com/kovidgoyal/kitty"
 	"github.com/kovidgoyal/kitty/tools/utils"
 	"io/fs"

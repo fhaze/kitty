@@ -56,6 +56,7 @@ jobs:
                 mingw-w64-ucrt-x86_64-cairo
                 mingw-w64-ucrt-x86_64-fontconfig
                 mingw-w64-ucrt-x86_64-mesa
+                mingw-w64-ucrt-x86_64-libsystre
 
           - name: Install SIMDe headers (not packaged by MSYS2)
             run: |
