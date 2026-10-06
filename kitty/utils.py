@@ -1299,16 +1299,42 @@ def unlock_file(f: IO[bytes] | IO[str]) -> None:
 
 @contextmanager
 def lock_with_file(path: str) -> Iterator[None]:
-    flags = os.O_CREAT | os.O_WRONLY | os.O_EXCL
+    """Take an exclusive advisory lock on path, waiting for it to become available.
+
+    The lock file is created if needed and left in place, since unlinking it
+    would allow a second process to create and lock a different file with the
+    same name while the lock is still held. The kernel drops the lock when the
+    file descriptor is closed, including on abnormal process exit, so stale lock
+    files are harmless.
+    """
     if sys.platform == 'win32':
-        flags |= os.O_NOINHERIT
-    else:
-        flags |= os.O_CLOEXEC
-    os.close(os.open(path, flags))
+        import msvcrt
+
+        fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_NOINHERIT, 0o600)
+        try:
+            # LK_LOCK gives up with OSError after ~10 seconds, keep waiting
+            while True:
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    pass
+            try:
+                yield
+            finally:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        finally:
+            os.close(fd)
+        return
+    import fcntl
+
+    fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_CLOEXEC, 0o600)
     try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
         yield
     finally:
-        os.remove(path)
+        os.close(fd)
 
 
 def rmtree_best_effort(relpath: str, dir_fd: int) -> None:

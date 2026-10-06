@@ -820,7 +820,7 @@ def kitty_env(args: Options) -> Env:
     elif is_windows:
         cflags.extend(pkg_config('cairo-ft', '--cflags-only-I'))
         platform_libs = pkg_config('cairo-ft', '--libs')
-        platform_libs.extend('-lws2_32 -lbcrypt -lgdi32 -luser32 -lshell32 -ladvapi32 -lshlwapi -lole32 -luuid -ldwrite -lpsapi -lwtsapi32'.split())
+        platform_libs.extend('-lws2_32 -lbcrypt -lgdi32 -luser32 -lshell32 -ladvapi32 -lshlwapi -lole32 -luuid -ldwrite -lpsapi -lwtsapi32 -lsystre'.split())
     else:
         cflags.extend(pkg_config('cairo-fc', '--cflags-only-I'))
         platform_libs = []
@@ -1869,6 +1869,22 @@ CONPTY_NUGET_VERSION = '1.24.260710001'
 CONPTY_NUGET_SHA256 = '175640566a3b59c4b132070ee96c2c77e5ab7edd2e92732a5eb3610bbf63d90e'
 
 
+# Custom shaders are compiled at runtime by running slangc, which kitty looks up
+# by name. Windows searches the directory of the running executable first, so
+# putting slangc next to kitty.exe makes it available, as on Linux and macOS.
+SLANG_RUNTIME_FILES = ('slang-compiler.dll', 'slang-glsl-module.dll', 'slang-glslang.dll')
+
+
+def bundle_slangc(launcher_dir: str) -> None:
+    slangc = shutil.which(os.environ.get('SLANGC', 'slangc'))
+    if not slangc:
+        raise SystemExit('The shader slang compiler (slangc) was not found, set the SLANGC environment variable')
+    src = os.path.dirname(os.path.abspath(slangc))
+    shutil.copy2(slangc, os.path.join(launcher_dir, 'slangc.exe'))
+    for x in SLANG_RUNTIME_FILES:
+        shutil.copy2(os.path.join(src, x), launcher_dir)
+
+
 def bundle_conpty(launcher_dir: str) -> None:
     import zipfile
     from urllib.request import urlopen
@@ -2486,7 +2502,7 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
     shutil.copy2('logo/beam-cursor@2x.png', os.path.join(libdir, 'logo'))
     copy_shell_integration(os.path.join(libdir, 'shell-integration'), bundle_type == 'windows-package')
     shutil.copytree('fonts', os.path.join(libdir, 'fonts'), dirs_exist_ok=True)
-    allowed_extensions = frozenset('py slang glsl so pyd'.split())
+    allowed_extensions = frozenset('py slang pipeline glsl so pyd'.split())
 
     def src_ignore(parent: str, entries: Iterable[str]) -> List[str]:
         ans = []
@@ -2539,6 +2555,7 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
         # must happen before building the shaders, which runs the packaged kitty.exe
         bundle_windows_runtime(ddir, launcher_dir)
         bundle_conpty(launcher_dir)
+        bundle_slangc(launcher_dir)
     if not for_freeze:
         if not bundle_type.startswith('macos-'):
             build_static_kittens(args, launcher_dir=launcher_dir)

@@ -56,6 +56,7 @@ jobs:
                 mingw-w64-ucrt-x86_64-cairo
                 mingw-w64-ucrt-x86_64-fontconfig
                 mingw-w64-ucrt-x86_64-mesa
+                mingw-w64-ucrt-x86_64-libsystre
 
           - name: Install SIMDe headers (not packaged by MSYS2)
             run: |
@@ -107,6 +108,8 @@ jobs:
               start "" /b /wait kitty.exe --version || exit /b 1
               kitten.exe --version || exit /b 1
               start "" /b /wait kitty.exe +runpy "import ssl, sqlite3, kitty.fast_data_types" || exit /b 1
+              rem custom shaders are compiled at runtime by the bundled slangc
+              slangc.exe -version || exit /b 1
               rem WSL distros look up the terminfo under x\ not the hex encoded 78\ that tic writes on Windows
               if not exist ..\lib\kitty\terminfo\x\xterm-kitty exit /b 1
               if not exist ..\lib\kitty\terminfo\78\xterm-kitty exit /b 1

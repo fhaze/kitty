@@ -4,7 +4,7 @@
 
 import os
 import shutil
-from collections.abc import Callable, Collection, Container, Iterable, Iterator, Sequence
+from collections.abc import Callable, Container, Iterable, Iterator, Sequence
 from contextlib import suppress
 from typing import Any, Literal, NamedTuple, TypedDict
 
@@ -518,7 +518,8 @@ def tab_for_window(boss: Boss, opts: LaunchCLIOptions, target_tab: Tab | None, n
 watcher_modules: dict[str, Any] = {}
 
 
-def load_watch_modules(watchers: Collection[str]) -> Watchers | None:
+def load_watch_modules(watchers: Iterable[str]) -> Watchers | None:
+    watchers = tuple(watchers)
     if not watchers:
         return None
     import runpy
