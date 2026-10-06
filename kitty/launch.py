@@ -4,7 +4,7 @@
 
 import os
 import shutil
-from collections.abc import Callable, Collection, Container, Iterable, Iterator, Sequence
+from collections.abc import Callable, Container, Iterable, Iterator, Sequence
 from contextlib import suppress
 from typing import Any, Literal, NamedTuple, TypedDict
 
