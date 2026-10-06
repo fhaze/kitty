@@ -1869,6 +1869,22 @@ CONPTY_NUGET_VERSION = '1.24.260710001'
 CONPTY_NUGET_SHA256 = '175640566a3b59c4b132070ee96c2c77e5ab7edd2e92732a5eb3610bbf63d90e'
 
 
+# Custom shaders are compiled at runtime by running slangc, which kitty looks up
+# by name. Windows searches the directory of the running executable first, so
+# putting slangc next to kitty.exe makes it available, as on Linux and macOS.
+SLANG_RUNTIME_FILES = ('slang-compiler.dll', 'slang-glsl-module.dll', 'slang-glslang.dll')
+
+
+def bundle_slangc(launcher_dir: str) -> None:
+    slangc = shutil.which(os.environ.get('SLANGC', 'slangc'))
+    if not slangc:
+        raise SystemExit('The shader slang compiler (slangc) was not found, set the SLANGC environment variable')
+    src = os.path.dirname(os.path.abspath(slangc))
+    shutil.copy2(slangc, os.path.join(launcher_dir, 'slangc.exe'))
+    for x in SLANG_RUNTIME_FILES:
+        shutil.copy2(os.path.join(src, x), launcher_dir)
+
+
 def bundle_conpty(launcher_dir: str) -> None:
     import zipfile
     from urllib.request import urlopen
@@ -2539,6 +2555,7 @@ def package(args: Options, bundle_type: str, do_build_all: bool = True) -> None:
         # must happen before building the shaders, which runs the packaged kitty.exe
         bundle_windows_runtime(ddir, launcher_dir)
         bundle_conpty(launcher_dir)
+        bundle_slangc(launcher_dir)
     if not for_freeze:
         if not bundle_type.startswith('macos-'):
             build_static_kittens(args, launcher_dir=launcher_dir)

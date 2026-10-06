@@ -202,8 +202,10 @@ Detailed list of changes
 0.49.2 [2026-10-01]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Windows: Fix the builtin custom shaders defined by pipeline files, such as
-  the cursor trails, being missing from the Windows package
+- Windows: Fix custom shaders failing to build with "The system cannot find
+  the file specified" because the slang shader compiler was not bundled, and
+  the builtin shaders defined by pipeline files, such as the cursor trails,
+  being missing from the Windows package
 
 - Windows: Fix starting a second kitty instance failing to build custom
   shaders while another instance is building them, or after a previous
