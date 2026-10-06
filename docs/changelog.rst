@@ -202,6 +202,13 @@ Detailed list of changes
 0.49.2 [2026-10-01]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+- Windows: Fix the builtin custom shaders defined by pipeline files, such as
+  the cursor trails, being missing from the Windows package
+
+- Windows: Fix starting a second kitty instance failing to build custom
+  shaders while another instance is building them, or after a previous
+  instance was killed while building them
+
 - A new option :opt:`detect_url_regex` to detect arbitrary text, such as file
   references in compiler output, as clickable URLs under the mouse (:iss:`10407`)
 
